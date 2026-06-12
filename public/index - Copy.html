@@ -50,43 +50,8 @@
             document.getElementById('lobby').style.display = "none";
             document.getElementById('gameCanvas').style.display = "block";
             console.log(`Game bắt đầu với ${data.humans} người chơi và ${data.ais} máy AI`);
-            
-            // Bắt đầu khởi tạo đồ họa game
-            initGame(data);
+            // Gọi hàm initGame() của bạn tại đây
         });
-
-        // --- CÁC HÀM VẼ ĐỒ HỌA GAME ---
-        let canvas, ctx;
-
-        function initGame(gameData) {
-            canvas = document.getElementById('gameCanvas');
-            ctx = canvas.getContext('2d'); // Lấy công cụ vẽ 2D
-
-            // Thiết lập kích thước khung hình game (ví dụ: 800x600)
-            canvas.width = 800;
-            canvas.height = 600;
-
-            // Gọi vòng lặp game
-            gameLoop();
-        }
-
-        function gameLoop() {
-            // 1. Xóa khung hình cũ và vẽ nền đất/cỏ (Màu xanh đậm)
-            ctx.fillStyle = '#2d5a27'; 
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // 2. Vẽ thử một "Nhà chính" (Hình vuông màu xanh dương)
-            ctx.fillStyle = '#0055ff';
-            ctx.fillRect(350, 250, 100, 100); // Tọa độ X:350, Y:250, Rộng:100, Cao:100
-            
-            // 3. Viết tên căn cứ
-            ctx.fillStyle = 'white';
-            ctx.font = '20px Arial';
-            ctx.fillText('Căn cứ Đội 1', 345, 235);
-
-            // Vòng lặp liên tục để cập nhật hình ảnh 60 khung hình/giây
-            requestAnimationFrame(gameLoop); 
-        }
     </script>
 </body>
 </html>
