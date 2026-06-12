@@ -5,68 +5,88 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sci-Fi RTS Multiplayer</title>
     <style>
-        /* CSS Reset & Khóa tương tác mặc định của trình duyệt để xử lý mượt trên Mobile */
         body, html { 
             margin: 0; padding: 0; width: 100vw; height: 100vh; 
             background-color: #000; overflow: hidden; 
-            touch-action: none; /* Khóa cuộn/zoom mặc định của điện thoại */
-            user-select: none; -webkit-user-select: none;
+            touch-action: none; user-select: none; -webkit-user-select: none;
+            font-family: sans-serif;
         }
-        canvas { display: block; width: 100%; height: 100%; }
         
-        #ui-layer {
-            position: absolute; top: 10px; left: 10px; color: #00ffff; 
-            font-family: monospace; font-size: 14px; pointer-events: none;
-            text-shadow: 1px 1px 2px #000;
+        /* Đưa Canvas chìm xuống dưới cùng, phủ kín 100% màn hình */
+        canvas { 
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; 
+        }
+
+        /* Lớp UI nổi lên trên */
+        #ui-container { position: relative; z-index: 10; width: 100%; height: 100%; pointer-events: none; }
+        
+        /* Top Bar hiển thị Stats */
+        #top-bar {
+            position: absolute; top: 0; left: 0; width: 100%; background: rgba(0, 0, 15, 0.9);
+            border-bottom: 1px solid #00ffff; display: flex; justify-content: center; gap: 20px;
+            padding: 8px 0; font-size: 14px; font-weight: bold; pointer-events: auto; display: none;
+        }
+        .stat-item { padding: 0 10px; border-right: 1px solid #444; }
+        .stat-item:last-child { border-right: none; }
+
+        /* Màn hình sảnh chờ */
+        #lobby-screen {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(10, 10, 20, 0.95); border: 2px solid #00ffff; padding: 30px;
+            border-radius: 8px; text-align: center; pointer-events: auto; width: 320px;
+        }
+        input, button { 
+            width: 100%; margin-bottom: 15px; padding: 10px; box-sizing: border-box; 
+            font-weight: bold; font-size: 16px; border-radius: 4px; border: none; outline: none;
+        }
+        input { background: #222; color: #fff; border: 1px solid #555; text-align: center; }
+        button { cursor: pointer; }
+        button:active { transform: scale(0.98); }
+
+        /* Thông báo hệ thống */
+        #system-toast {
+            position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 255, 0, 0.2); color: #00ff00; border: 1px solid #00ff00;
+            padding: 8px 20px; border-radius: 20px; font-weight: bold; display: none;
         }
     </style>
 </head>
 <body>
 
-    <div id="ui-layer">
-        <b>[ ENGINE DEBUG ]</b><br>
-        Zoom: <span id="debug-zoom">1.0</span>x<br>
-        Cam: <span id="debug-cam">0, 0</span>
-    </div>
-
     <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-container">
+        
+        <div id="top-bar">
+            <div class="stat-item" style="color: #ffd700;" id="stat-gold">Vàng: 100</div>
+            <div class="stat-item" style="color: #00ffff;" id="stat-p1">Player: ⚔️0</div>
+            <div class="stat-item" style="color: #ff3333;" id="stat-p2">Bot/P2: ⚔️0</div>
+            <div class="stat-item" style="color: #33ff33;" id="stat-p3">Bot/P3: ⚔️0</div>
+        </div>
+
+        <div id="system-toast">...</div>
+
+        <div id="lobby-screen">
+            <h2 style="color: #00ffff; margin-top: 0;">RTS COMMAND</h2>
+            <input type="text" id="username" placeholder="Tên của bạn (VD: Hiếu)" maxlength="12">
+            
+            <div style="border-bottom: 1px solid #444; margin: 20px 0;"></div>
+            
+            <button onclick="createHost()" style="background: #00ffff; color: #000;">TẠO PHÒNG MỚI</button>
+            <p style="color: #888; font-size: 12px; margin: -5px 0 15px;">(Mã phòng sẽ tạo tự động)</p>
+            
+            <div style="border-bottom: 1px solid #444; margin: 20px 0;"></div>
+
+            <input type="text" id="joinCode" placeholder="Nhập mã phòng..." style="text-transform: uppercase;">
+            <button onclick="joinGuest()" style="background: #555; color: #fff;">THAM GIA GUEST</button>
+        </div>
+
+    </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // ==========================================
-        // PHẦN 2: GAME_CONFIG (THÔNG SỐ CÂN BẰNG)
-        // ==========================================
-        const GAME_CONFIG = {
-            map: {
-                width: 6000,
-                height: 6000,
-                maxMines: 40,
-                mineCapacity: 400
-            },
-            buildings: {
-                hq: { hp: 12000, atk: 40, goldGen: 1, radius: 70 },
-                barracks: { hp: 2500, maxLevel: 3, radius: 40 },
-                turret: { hp: 1500, atk: 4, range: 350, limit: 5, radius: 20 },
-                reactor: { hp: 1200, goldGen: 1, limit: 5, radius: 25 }
-            },
-            units: {
-                miner: { cost: 50, hp: 800, spd: 0.6, carry: 20, radius: 4 },
-                interceptor: { cost: 20, hp: 200, atk: 18, spd: 1.0, range: 100 },
-                corvette: { cost: 40, hp: 400, atk: 25, spd: 0.6, range: 150 },
-                repairer: { cost: 60, hp: 300, heal: 40, spd: 0.5, range: 180 },
-                railgun: { cost: 80, hp: 600, atk: 80, spd: 0.4, range: 300, cd: 150 },
-                base_repairer: { cost: 50, hp: 80, heal: 2, healRate: 12 /* 0.2s = ~12 frames */, limit: 5 }
-            },
-            specialShips: { // Yêu cầu Barracks Lv3, Giá 250, Limit 3
-                carrier: { hp: 4000, atk: 0, spd: 0.25, range: 300, droneSpawnFrames: 240 },
-                leviathan: { hp: 3000, atk: 120, spd: 0.35, cd: 120, splashRadius: 100, splashDmg: 0.5 },
-                driller: { hp: 2500, atk: 12, spd: 0.4, cd: 15, heatMax: 10, heatBonus: 0.2 }
-            }
-        };
-
-        // ==========================================
-        // KHỞI TẠO CANVAS & KẾT NỐI MẠNG
-        // ==========================================
+        const GAME_CONFIG = { map: { width: 6000, height: 6000 } };
+        
         const socket = io();
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -80,157 +100,89 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // ==========================================
-        // PHẦN 1: BẢN ĐỒ & BACKGROUND VŨ TRỤ
-        // ==========================================
+        let myRole = ''; let myTeam = 0; let myRoom = ''; let myName = '';
         const stars = [];
-        const STAR_COUNT = 1500; // Số lượng sao trải đều bản đồ 6000x6000
-        for(let i=0; i<STAR_COUNT; i++) {
-            stars.push({
-                x: Math.random() * GAME_CONFIG.map.width,
-                y: Math.random() * GAME_CONFIG.map.height,
-                size: Math.random() * 2,
-                alpha: Math.random()
-            });
-        }
+        for(let i=0; i<1500; i++) stars.push({ x: Math.random()*6000, y: Math.random()*6000, size: Math.random()*2, alpha: Math.random() });
 
-        // ==========================================
-        // HỆ THỐNG CAMERA (PAN & ZOOM ĐA NỀN TẢNG)
-        // ==========================================
-        let cam = { x: 3000, y: 3000, zoom: 0.5 }; // Khởi đầu ở giữa bản đồ
-        let isDragging = false;
-        let dragStart = { x: 0, y: 0 };
-        let initialPinchDist = null;
+        let cam = { x: 3000, y: 3000, zoom: 0.5 };
+        let isDragging = false; let dragStart = { x: 0, y: 0 };
 
         function clampCamera() {
-            if(cam.zoom < 0.15) cam.zoom = 0.15;
-            if(cam.zoom > 2.0) cam.zoom = 2.0;
-            
-            // Giữ camera không trượt ra ngoài rìa bản đồ
-            let viewW = window.innerWidth / cam.zoom;
-            let viewH = window.innerHeight / cam.zoom;
-            if(cam.x < viewW/2) cam.x = viewW/2;
-            if(cam.y < viewH/2) cam.y = viewH/2;
-            if(cam.x > GAME_CONFIG.map.width - viewW/2) cam.x = GAME_CONFIG.map.width - viewW/2;
-            if(cam.y > GAME_CONFIG.map.height - viewH/2) cam.y = GAME_CONFIG.map.height - viewH/2;
-
-            document.getElementById('debug-zoom').innerText = cam.zoom.toFixed(2);
-            document.getElementById('debug-cam').innerText = `${Math.floor(cam.x)}, ${Math.floor(cam.y)}`;
+            if(cam.zoom < 0.15) cam.zoom = 0.15; if(cam.zoom > 2.0) cam.zoom = 2.0;
+            let viewW = window.innerWidth / cam.zoom; let viewH = window.innerHeight / cam.zoom;
+            if(cam.x < viewW/2) cam.x = viewW/2; if(cam.y < viewH/2) cam.y = viewH/2;
+            if(cam.x > 6000 - viewW/2) cam.x = 6000 - viewW/2; if(cam.y > 6000 - viewH/2) cam.y = 6000 - viewH/2;
         }
 
-        // --- ĐIỀU KHIỂN CHUỘT (PC) ---
-        canvas.addEventListener('mousedown', e => {
-            isDragging = true;
-            dragStart = { x: e.clientX, y: e.clientY };
-        });
+        canvas.addEventListener('mousedown', e => { isDragging = true; dragStart = { x: e.clientX, y: e.clientY }; });
         window.addEventListener('mousemove', e => {
             if(!isDragging) return;
-            let dx = (e.clientX - dragStart.x) / cam.zoom;
-            let dy = (e.clientY - dragStart.y) / cam.zoom;
-            cam.x -= dx; cam.y -= dy;
-            dragStart = { x: e.clientX, y: e.clientY };
-            clampCamera();
+            cam.x -= (e.clientX - dragStart.x) / cam.zoom; cam.y -= (e.clientY - dragStart.y) / cam.zoom;
+            dragStart = { x: e.clientX, y: e.clientY }; clampCamera();
         });
         window.addEventListener('mouseup', () => isDragging = false);
-        
-        canvas.addEventListener('wheel', e => {
-            let zoomAmount = e.deltaY > 0 ? -0.05 : 0.05;
-            cam.zoom += zoomAmount;
-            clampCamera();
+        canvas.addEventListener('wheel', e => { cam.zoom += e.deltaY > 0 ? -0.05 : 0.05; clampCamera(); });
+
+        // --- NETWORK UI ---
+        function showToast(msg) {
+            let t = document.getElementById('system-toast');
+            t.innerText = msg; t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', 4000);
+        }
+
+        function createHost() {
+            myName = document.getElementById('username').value.trim() || 'Host';
+            socket.emit('createRoom', myName);
+        }
+
+        function joinGuest() {
+            myName = document.getElementById('username').value.trim() || 'Guest';
+            let code = document.getElementById('joinCode').value.toUpperCase().trim();
+            if(code) socket.emit('joinRoom', { code: code, username: myName });
+        }
+
+        socket.on('init', (data) => {
+            myRole = data.role; myRoom = data.roomCode;
+            document.getElementById('lobby-screen').style.display = 'none';
+            document.getElementById('top-bar').style.display = 'flex';
+            
+            if(myRole === 'host') {
+                showToast(`Phòng đã tạo! Mã của bạn: ${myRoom}`);
+            }
         });
 
-        // --- ĐIỀU KHIỂN CẢM ỨNG (MOBILE) ---
-        canvas.addEventListener('touchstart', e => {
-            if (e.touches.length === 1) {
-                isDragging = true;
-                dragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-            } else if (e.touches.length === 2) {
-                isDragging = false;
-                initialPinchDist = Math.hypot(
-                    e.touches[0].clientX - e.touches[1].clientX,
-                    e.touches[0].clientY - e.touches[1].clientY
-                );
-            }
-        }, {passive: false});
+        socket.on('systemMsg', (msg) => { showToast(msg); });
 
-        canvas.addEventListener('touchmove', e => {
-            e.preventDefault();
-            if (isDragging && e.touches.length === 1) {
-                let dx = (e.touches[0].clientX - dragStart.x) / cam.zoom;
-                let dy = (e.touches[0].clientY - dragStart.y) / cam.zoom;
-                cam.x -= dx; cam.y -= dy;
-                dragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-                clampCamera();
-            } else if (e.touches.length === 2 && initialPinchDist) {
-                let dist = Math.hypot(
-                    e.touches[0].clientX - e.touches[1].clientX,
-                    e.touches[0].clientY - e.touches[1].clientY
-                );
-                let scale = dist / initialPinchDist;
-                cam.zoom += (scale - 1) * 0.1;
-                initialPinchDist = dist;
-                clampCamera();
-            }
-        }, {passive: false});
-
-        canvas.addEventListener('touchend', e => {
-            if (e.touches.length < 2) initialPinchDist = null;
-            if (e.touches.length === 0) isDragging = false;
-        });
-
-        // ==========================================
-        // VÒNG LẶP ĐỒ HỌA (RENDER LOOP)
-        // ==========================================
+        // --- RENDER LOOP ---
         function gameLoop() {
-            // 1. Clear nền vũ trụ
-            ctx.fillStyle = "#030308";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+            ctx.fillStyle = "#030308"; ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.save();
-            // 2. Chuyển đổi tọa độ màn hình sang tọa độ thế giới ảo
             ctx.translate(window.innerWidth/2, window.innerHeight/2);
-            ctx.scale(cam.zoom, cam.zoom);
-            ctx.translate(-cam.x, -cam.y);
+            ctx.scale(cam.zoom, cam.zoom); ctx.translate(-cam.x, -cam.y);
 
-            // 3. Vẽ lưới map (Boundary)
-            ctx.strokeStyle = "rgba(0, 255, 255, 0.2)";
-            ctx.lineWidth = 10;
-            ctx.strokeRect(0, 0, GAME_CONFIG.map.width, GAME_CONFIG.map.height);
+            ctx.strokeStyle = "rgba(0, 255, 255, 0.2)"; ctx.lineWidth = 10;
+            ctx.strokeRect(0, 0, 6000, 6000);
 
-            // 4. Vẽ các vì sao (Parallax đơn giản)
             ctx.fillStyle = "white";
-            stars.forEach(s => {
-                // Tối ưu: Chỉ vẽ những ngôi sao nằm trong khung hình (Culling)
-                let viewX = cam.x - (window.innerWidth/2 / cam.zoom);
-                let viewY = cam.y - (window.innerHeight/2 / cam.zoom);
-                let viewW = window.innerWidth / cam.zoom;
-                let viewH = window.innerHeight / cam.zoom;
+            let vX = cam.x - (window.innerWidth/2 / cam.zoom); let vY = cam.y - (window.innerHeight/2 / cam.zoom);
+            let vW = window.innerWidth / cam.zoom; let vH = window.innerHeight / cam.zoom;
 
-                if (s.x >= viewX && s.x <= viewX + viewW && s.y >= viewY && s.y <= viewY + viewH) {
+            stars.forEach(s => {
+                if (s.x >= vX && s.x <= vX + vW && s.y >= vY && s.y <= vY + vH) {
                     s.alpha += (Math.random() - 0.5) * 0.05;
-                    if(s.alpha < 0.2) s.alpha = 0.2;
-                    if(s.alpha > 1) s.alpha = 1;
-                    
-                    ctx.globalAlpha = s.alpha;
-                    ctx.beginPath();
-                    ctx.arc(s.x, s.y, s.size, 0, Math.PI*2);
-                    ctx.fill();
+                    if(s.alpha < 0.2) s.alpha = 0.2; if(s.alpha > 1) s.alpha = 1;
+                    ctx.globalAlpha = s.alpha; ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI*2); ctx.fill();
                 }
             });
             ctx.globalAlpha = 1.0;
 
-            // 5. Test vẽ vật thể (Sẽ bị thay thế bởi State từ Server sau này)
-            ctx.fillStyle = "#ff3333";
-            ctx.shadowColor = "#ff3333";
-            ctx.shadowBlur = 20;
-            ctx.fillRect(cam.x - 50, cam.y - 50, 100, 100); // Vẽ một ô vuông ngay giữa tâm camera
-            ctx.shadowBlur = 0; // Reset blur
+            // Vẽ khối test trung tâm map để kiểm tra tọa độ
+            ctx.fillStyle = "red"; ctx.fillRect(2950, 2950, 100, 100);
 
             ctx.restore();
             requestAnimationFrame(gameLoop);
         }
 
-        // Khởi động
         clampCamera();
         requestAnimationFrame(gameLoop);
     </script>
