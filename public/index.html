@@ -3,37 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RTS Multiplayer v0.1.1</title>
+    <title>RTS Multiplayer v0.1.2</title>
     <style>
-        /* CSS RESET TRIỆT ĐỂ - CHỐNG MỌI ĐƯỜNG KẺ/LINE/SCROLLBAR */
         * { box-sizing: border-box; }
         body, html { 
             margin: 0; padding: 0; width: 100vw; height: 100vh; 
-            background-color: #000; overflow: hidden; /* Cắt tuyệt đối mọi viền thừa */
+            background-color: #000; overflow: hidden; 
             touch-action: none; user-select: none; -webkit-user-select: none;
             font-family: sans-serif;
         }
         
-        /* CANVAS PHỦ KÍN MÀN HÌNH - KHÔNG BORDER */
         canvas { 
             position: absolute; top: 0; left: 0; 
             width: 100vw; height: 100vh; z-index: 1; 
             display: block; border: none; outline: none;
         }
 
-        /* LỚP UI QUẢN LÝ CÁC MÀN HÌNH */
         #ui-layer { 
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; 
             z-index: 10; pointer-events: none; 
         }
 
-        .screen { 
-            display: none; width: 100%; height: 100%; 
-            pointer-events: auto; /* Mở tương tác chuột cho các UI đang hiển thị */
-        }
+        .screen { display: none; width: 100%; height: 100%; pointer-events: auto; }
         .active { display: flex !important; flex-direction: column; align-items: center; justify-content: center; }
 
-        /* Khối Box cho Màn hình Sảnh */
         .box-panel {
             background: rgba(10, 10, 20, 0.95); border: 2px solid #00ffff; padding: 30px;
             border-radius: 8px; text-align: center; width: 350px; max-width: 90%;
@@ -48,14 +41,12 @@
         button { cursor: pointer; transition: 0.1s; }
         button:active { transform: scale(0.95); }
 
-        /* Top Bar hiển thị khi chơi */
         #top-bar {
             position: absolute; top: 0; left: 0; width: 100%; background: rgba(0, 0, 15, 0.85);
             border-bottom: 1px solid #333; display: flex; justify-content: center; gap: 15px;
             padding: 8px 0; font-size: 12px; font-weight: bold; pointer-events: auto;
         }
 
-        /* Danh sách người chơi trong phòng chờ */
         #player-list { list-style: none; padding: 0; margin: 20px 0; text-align: left; background: #111; border: 1px solid #444; border-radius: 4px; padding: 10px;}
         #player-list li { padding: 5px 0; border-bottom: 1px dashed #333; color: #fff; }
         #player-list li:last-child { border-bottom: none; }
@@ -85,15 +76,18 @@
 
         <div id="screen-login" class="screen active">
             <div class="box-panel">
-                <h2 style="color: #00ffff; margin-top: 0;">RTS v0.1.1</h2>
-                <input type="text" id="username" placeholder="Nhập tên của bạn" maxlength="15">
+                <h2 style="color: #00ffff; margin-top: 0;">RTS v0.1.2</h2>
+                <p id="serverStatus" style="color: #ff4444; font-weight: bold; font-size: 14px;">Đang kết nối Server...</p>
                 
+                <input type="text" id="username" placeholder="Nhập tên của bạn" maxlength="15">
                 <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;">
                 
-                <button onclick="createHost()" style="background: #00ffff; color: #000;">TẠO PHÒNG MỚI (HOST)</button>
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <input type="text" id="joinCode" placeholder="MÃ PHÒNG" style="margin-bottom: 0; text-transform: uppercase;">
-                    <button onclick="joinGuest()" style="background: #555; color: #fff; margin-bottom: 0;">THAM GIA</button>
+                <div id="action-buttons" style="display: none;">
+                    <button onclick="createHost()" style="background: #00ffff; color: #000;">TẠO PHÒNG MỚI (HOST)</button>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <input type="text" id="joinCode" placeholder="MÃ PHÒNG" style="margin-bottom: 0; text-transform: uppercase;">
+                        <button onclick="joinGuest()" style="background: #555; color: #fff; margin-bottom: 0;">THAM GIA</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -103,8 +97,7 @@
                 <h3 style="color: #888; margin: 0 0 5px 0;">MÃ CHIA SẺ</h3>
                 <h1 id="displayRoomCode" style="color: #00ffff; margin: 0 0 20px 0; font-size: 40px; letter-spacing: 5px;">----</h1>
                 
-                <ul id="player-list">
-                    </ul>
+                <ul id="player-list"></ul>
 
                 <button id="btnStartGame" onclick="hostStartGame()" style="display: none; background: #0a0; color: #fff; font-size: 18px;">BẮT ĐẦU CHIẾN DỊCH</button>
                 <p id="guestWaitMsg" style="display: none; color: #aaa; font-style: italic; font-size: 14px;">Đang chờ Host bắt đầu game...</p>
@@ -118,6 +111,13 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
+        // --- CHỐNG LỖI KẾT NỐI ---
+        socket.on('connect', () => {
+            document.getElementById('serverStatus').innerText = "Đã kết nối Server thành công!";
+            document.getElementById('serverStatus').style.color = "#00ff00";
+            document.getElementById('action-buttons').style.display = 'block'; // Mở khóa nút bấm
+        });
+
         // --- RESIZE CANVAS ---
         let dpr = window.devicePixelRatio || 1;
         function resizeCanvas() {
@@ -130,7 +130,6 @@
 
         let myRole = ''; let myTeam = 0; let myRoom = ''; let myName = '';
         
-        // --- UI ROUTING ---
         function switchScreen(screenId) {
             document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
             if(screenId) document.getElementById(screenId).classList.add('active');
@@ -142,7 +141,6 @@
             setTimeout(() => t.style.display = 'none', 3000);
         }
 
-        // --- NETWORK EVENT EMITS ---
         function createHost() {
             myName = document.getElementById('username').value.trim() || 'Host';
             socket.emit('createRoom', myName);
@@ -158,7 +156,6 @@
             socket.emit('startGame', myRoom);
         }
 
-        // --- NETWORK EVENT LISTENERS ---
         socket.on('init', (data) => {
             myRole = data.role; myTeam = data.team; myRoom = data.roomCode;
             
@@ -179,15 +176,15 @@
 
         socket.on('systemMsg', (msg) => { showToast(msg); });
 
-        // TẤT CẢ CHÍNH THỨC VÀO GAME
         socket.on('gameStarted', () => {
-            switchScreen(null); // Ẩn mọi màn hình menu
-            document.getElementById('top-bar').style.display = 'flex'; // Bật Top Bar
-            startGameLoop(); // Bắt đầu vòng lặp vẽ đồ họa
+            switchScreen(null); 
+            document.getElementById('top-bar').style.display = 'flex'; 
+            startGameLoop(); 
             showToast("BẮT ĐẦU CHIẾN DỊCH!");
         });
 
         function renderPlayerList(players) {
+            if (!players) return; // Chống lỗi ngầm nếu server chưa kịp gửi mảng players
             let html = '';
             players.forEach(p => {
                 let isMe = p.id === socket.id ? ' (Bạn)' : '';
@@ -206,7 +203,6 @@
         }
 
         function gameLoop() {
-            // 1. Clear nền vũ trụ
             ctx.fillStyle = "#030308"; 
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
@@ -215,11 +211,9 @@
             ctx.scale(cam.zoom, cam.zoom); 
             ctx.translate(-cam.x, -cam.y);
 
-            // 2. Vẽ lưới ranh giới map (Lùi nhẹ vào trong để test line)
             ctx.strokeStyle = "rgba(0, 255, 255, 0.2)"; ctx.lineWidth = 10;
             ctx.strokeRect(5, 5, 5990, 5990);
 
-            // 3. Render sao
             ctx.fillStyle = "white";
             let vX = cam.x - (window.innerWidth/2 / cam.zoom); let vY = cam.y - (window.innerHeight/2 / cam.zoom);
             let vW = window.innerWidth / cam.zoom; let vH = window.innerHeight / cam.zoom;

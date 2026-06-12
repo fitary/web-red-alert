@@ -35,8 +35,6 @@ io.on('connection', (socket) => {
             socket.join(data.code);
             
             socket.emit('init', { role: 'guest', team: teamId, roomCode: data.code, players: room.players });
-            
-            // Báo cho mọi người trong phòng biết có người mới vào để cập nhật UI
             io.to(data.code).emit('roomUpdated', room.players);
             io.to(data.code).emit('systemMsg', `⚡ ${newPlayer.name} đã tham gia!`);
         } else {
@@ -49,14 +47,14 @@ io.on('connection', (socket) => {
         let room = rooms[roomCode];
         if(room && room.host === socket.id) {
             room.status = 'playing';
-            io.to(roomCode).emit('gameStarted'); // Ra lệnh cho toàn bộ phòng vào game
+            io.to(roomCode).emit('gameStarted');
         }
     });
 
     socket.on('disconnect', () => {
-        // Có thể thêm logic xử lý khi người chơi thoát ngang ở đây sau
+        // Logic xử lý ngắt kết nối sẽ thêm sau
     });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`[RTS SERVER] Đang chạy tại port ${PORT}`));
+server.listen(PORT, () => console.log(`[RTS SERVER] Đang chạy tại port ${PORT} - Phiên bản v0.1.2`));
