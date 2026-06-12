@@ -3,51 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sci-Fi RTS Multiplayer</title>
+    <title>RTS Multiplayer v0.1.1</title>
     <style>
+        /* CSS RESET TRIỆT ĐỂ - CHỐNG MỌI ĐƯỜNG KẺ/LINE/SCROLLBAR */
+        * { box-sizing: border-box; }
         body, html { 
             margin: 0; padding: 0; width: 100vw; height: 100vh; 
-            background-color: #000; overflow: hidden; 
+            background-color: #000; overflow: hidden; /* Cắt tuyệt đối mọi viền thừa */
             touch-action: none; user-select: none; -webkit-user-select: none;
             font-family: sans-serif;
         }
         
-        /* Đưa Canvas chìm xuống dưới cùng, phủ kín 100% màn hình */
+        /* CANVAS PHỦ KÍN MÀN HÌNH - KHÔNG BORDER */
         canvas { 
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; 
+            position: absolute; top: 0; left: 0; 
+            width: 100vw; height: 100vh; z-index: 1; 
+            display: block; border: none; outline: none;
         }
 
-        /* Lớp UI nổi lên trên */
-        #ui-container { position: relative; z-index: 10; width: 100%; height: 100%; pointer-events: none; }
-        
-        /* Top Bar hiển thị Stats */
-        #top-bar {
-            position: absolute; top: 0; left: 0; width: 100%; background: rgba(0, 0, 15, 0.9);
-            border-bottom: 1px solid #00ffff; display: flex; justify-content: center; gap: 20px;
-            padding: 8px 0; font-size: 14px; font-weight: bold; pointer-events: auto; display: none;
+        /* LỚP UI QUẢN LÝ CÁC MÀN HÌNH */
+        #ui-layer { 
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; 
+            z-index: 10; pointer-events: none; 
         }
-        .stat-item { padding: 0 10px; border-right: 1px solid #444; }
-        .stat-item:last-child { border-right: none; }
 
-        /* Màn hình sảnh chờ */
-        #lobby-screen {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        .screen { 
+            display: none; width: 100%; height: 100%; 
+            pointer-events: auto; /* Mở tương tác chuột cho các UI đang hiển thị */
+        }
+        .active { display: flex !important; flex-direction: column; align-items: center; justify-content: center; }
+
+        /* Khối Box cho Màn hình Sảnh */
+        .box-panel {
             background: rgba(10, 10, 20, 0.95); border: 2px solid #00ffff; padding: 30px;
-            border-radius: 8px; text-align: center; pointer-events: auto; width: 320px;
+            border-radius: 8px; text-align: center; width: 350px; max-width: 90%;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
         }
-        input, button { 
-            width: 100%; margin-bottom: 15px; padding: 10px; box-sizing: border-box; 
-            font-weight: bold; font-size: 16px; border-radius: 4px; border: none; outline: none;
-        }
-        input { background: #222; color: #fff; border: 1px solid #555; text-align: center; }
-        button { cursor: pointer; }
-        button:active { transform: scale(0.98); }
 
-        /* Thông báo hệ thống */
+        input, button { 
+            width: 100%; margin-bottom: 12px; padding: 12px; font-weight: bold; 
+            font-size: 16px; border-radius: 4px; border: none; outline: none;
+        }
+        input { background: #111; color: #fff; border: 1px solid #00ffff; text-align: center; }
+        button { cursor: pointer; transition: 0.1s; }
+        button:active { transform: scale(0.95); }
+
+        /* Top Bar hiển thị khi chơi */
+        #top-bar {
+            position: absolute; top: 0; left: 0; width: 100%; background: rgba(0, 0, 15, 0.85);
+            border-bottom: 1px solid #333; display: flex; justify-content: center; gap: 15px;
+            padding: 8px 0; font-size: 12px; font-weight: bold; pointer-events: auto;
+        }
+
+        /* Danh sách người chơi trong phòng chờ */
+        #player-list { list-style: none; padding: 0; margin: 20px 0; text-align: left; background: #111; border: 1px solid #444; border-radius: 4px; padding: 10px;}
+        #player-list li { padding: 5px 0; border-bottom: 1px dashed #333; color: #fff; }
+        #player-list li:last-child { border-bottom: none; }
+        .team-1 { color: #00ffff; } .team-2 { color: #ff3333; } .team-3 { color: #33ff33; }
+
         #system-toast {
             position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
-            background: rgba(0, 255, 0, 0.2); color: #00ff00; border: 1px solid #00ff00;
-            padding: 8px 20px; border-radius: 20px; font-weight: bold; display: none;
+            background: rgba(0, 0, 0, 0.8); color: #00ffff; border: 1px solid #00ffff;
+            padding: 8px 20px; border-radius: 20px; font-weight: bold; font-size: 12px; display: none;
         }
     </style>
 </head>
@@ -55,42 +72,53 @@
 
     <canvas id="gameCanvas"></canvas>
 
-    <div id="ui-container">
+    <div id="ui-layer">
         
-        <div id="top-bar">
-            <div class="stat-item" style="color: #ffd700;" id="stat-gold">Vàng: 100</div>
-            <div class="stat-item" style="color: #00ffff;" id="stat-p1">Player: ⚔️0</div>
-            <div class="stat-item" style="color: #ff3333;" id="stat-p2">Bot/P2: ⚔️0</div>
-            <div class="stat-item" style="color: #33ff33;" id="stat-p3">Bot/P3: ⚔️0</div>
+        <div id="top-bar" style="display: none;">
+            <div style="color: #ffd700;" id="stat-gold">Vàng: 100</div>
+            <div style="color: #00ffff;" id="stat-p1">P1: ⚔️0</div>
+            <div style="color: #ff3333;" id="stat-p2">P2: ⚔️0</div>
+            <div style="color: #33ff33;" id="stat-p3">P3: ⚔️0</div>
         </div>
 
         <div id="system-toast">...</div>
 
-        <div id="lobby-screen">
-            <h2 style="color: #00ffff; margin-top: 0;">RTS COMMAND</h2>
-            <input type="text" id="username" placeholder="Tên của bạn (VD: Hiếu)" maxlength="12">
-            
-            <div style="border-bottom: 1px solid #444; margin: 20px 0;"></div>
-            
-            <button onclick="createHost()" style="background: #00ffff; color: #000;">TẠO PHÒNG MỚI</button>
-            <p style="color: #888; font-size: 12px; margin: -5px 0 15px;">(Mã phòng sẽ tạo tự động)</p>
-            
-            <div style="border-bottom: 1px solid #444; margin: 20px 0;"></div>
+        <div id="screen-login" class="screen active">
+            <div class="box-panel">
+                <h2 style="color: #00ffff; margin-top: 0;">RTS v0.1.1</h2>
+                <input type="text" id="username" placeholder="Nhập tên của bạn" maxlength="15">
+                
+                <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;">
+                
+                <button onclick="createHost()" style="background: #00ffff; color: #000;">TẠO PHÒNG MỚI (HOST)</button>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <input type="text" id="joinCode" placeholder="MÃ PHÒNG" style="margin-bottom: 0; text-transform: uppercase;">
+                    <button onclick="joinGuest()" style="background: #555; color: #fff; margin-bottom: 0;">THAM GIA</button>
+                </div>
+            </div>
+        </div>
 
-            <input type="text" id="joinCode" placeholder="Nhập mã phòng..." style="text-transform: uppercase;">
-            <button onclick="joinGuest()" style="background: #555; color: #fff;">THAM GIA GUEST</button>
+        <div id="screen-waiting" class="screen">
+            <div class="box-panel">
+                <h3 style="color: #888; margin: 0 0 5px 0;">MÃ CHIA SẺ</h3>
+                <h1 id="displayRoomCode" style="color: #00ffff; margin: 0 0 20px 0; font-size: 40px; letter-spacing: 5px;">----</h1>
+                
+                <ul id="player-list">
+                    </ul>
+
+                <button id="btnStartGame" onclick="hostStartGame()" style="display: none; background: #0a0; color: #fff; font-size: 18px;">BẮT ĐẦU CHIẾN DỊCH</button>
+                <p id="guestWaitMsg" style="display: none; color: #aaa; font-style: italic; font-size: 14px;">Đang chờ Host bắt đầu game...</p>
+            </div>
         </div>
 
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
     <script>
-        const GAME_CONFIG = { map: { width: 6000, height: 6000 } };
-        
         const socket = io();
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
+        // --- RESIZE CANVAS ---
         let dpr = window.devicePixelRatio || 1;
         function resizeCanvas() {
             canvas.width = window.innerWidth * dpr;
@@ -101,35 +129,20 @@
         resizeCanvas();
 
         let myRole = ''; let myTeam = 0; let myRoom = ''; let myName = '';
-        const stars = [];
-        for(let i=0; i<1500; i++) stars.push({ x: Math.random()*6000, y: Math.random()*6000, size: Math.random()*2, alpha: Math.random() });
-
-        let cam = { x: 3000, y: 3000, zoom: 0.5 };
-        let isDragging = false; let dragStart = { x: 0, y: 0 };
-
-        function clampCamera() {
-            if(cam.zoom < 0.15) cam.zoom = 0.15; if(cam.zoom > 2.0) cam.zoom = 2.0;
-            let viewW = window.innerWidth / cam.zoom; let viewH = window.innerHeight / cam.zoom;
-            if(cam.x < viewW/2) cam.x = viewW/2; if(cam.y < viewH/2) cam.y = viewH/2;
-            if(cam.x > 6000 - viewW/2) cam.x = 6000 - viewW/2; if(cam.y > 6000 - viewH/2) cam.y = 6000 - viewH/2;
+        
+        // --- UI ROUTING ---
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+            if(screenId) document.getElementById(screenId).classList.add('active');
         }
 
-        canvas.addEventListener('mousedown', e => { isDragging = true; dragStart = { x: e.clientX, y: e.clientY }; });
-        window.addEventListener('mousemove', e => {
-            if(!isDragging) return;
-            cam.x -= (e.clientX - dragStart.x) / cam.zoom; cam.y -= (e.clientY - dragStart.y) / cam.zoom;
-            dragStart = { x: e.clientX, y: e.clientY }; clampCamera();
-        });
-        window.addEventListener('mouseup', () => isDragging = false);
-        canvas.addEventListener('wheel', e => { cam.zoom += e.deltaY > 0 ? -0.05 : 0.05; clampCamera(); });
-
-        // --- NETWORK UI ---
         function showToast(msg) {
             let t = document.getElementById('system-toast');
             t.innerText = msg; t.style.display = 'block';
-            setTimeout(() => t.style.display = 'none', 4000);
+            setTimeout(() => t.style.display = 'none', 3000);
         }
 
+        // --- NETWORK EVENT EMITS ---
         function createHost() {
             myName = document.getElementById('username').value.trim() || 'Host';
             socket.emit('createRoom', myName);
@@ -141,28 +154,72 @@
             if(code) socket.emit('joinRoom', { code: code, username: myName });
         }
 
+        function hostStartGame() {
+            socket.emit('startGame', myRoom);
+        }
+
+        // --- NETWORK EVENT LISTENERS ---
         socket.on('init', (data) => {
-            myRole = data.role; myRoom = data.roomCode;
-            document.getElementById('lobby-screen').style.display = 'none';
-            document.getElementById('top-bar').style.display = 'flex';
+            myRole = data.role; myTeam = data.team; myRoom = data.roomCode;
             
-            if(myRole === 'host') {
-                showToast(`Phòng đã tạo! Mã của bạn: ${myRoom}`);
+            switchScreen('screen-waiting');
+            document.getElementById('displayRoomCode').innerText = myRoom;
+
+            if (myRole === 'host') {
+                document.getElementById('btnStartGame').style.display = 'block';
+            } else {
+                document.getElementById('guestWaitMsg').style.display = 'block';
             }
+            renderPlayerList(data.players);
+        });
+
+        socket.on('roomUpdated', (players) => {
+            renderPlayerList(players);
         });
 
         socket.on('systemMsg', (msg) => { showToast(msg); });
 
-        // --- RENDER LOOP ---
+        // TẤT CẢ CHÍNH THỨC VÀO GAME
+        socket.on('gameStarted', () => {
+            switchScreen(null); // Ẩn mọi màn hình menu
+            document.getElementById('top-bar').style.display = 'flex'; // Bật Top Bar
+            startGameLoop(); // Bắt đầu vòng lặp vẽ đồ họa
+            showToast("BẮT ĐẦU CHIẾN DỊCH!");
+        });
+
+        function renderPlayerList(players) {
+            let html = '';
+            players.forEach(p => {
+                let isMe = p.id === socket.id ? ' (Bạn)' : '';
+                html += `<li class="team-${p.team}">[Đội ${p.team}] ${p.name}${isMe}</li>`;
+            });
+            document.getElementById('player-list').innerHTML = html;
+        }
+
+        // --- RENDER ENGINE CHO GAME ---
+        let cam = { x: 3000, y: 3000, zoom: 0.5 };
+        const stars = [];
+        for(let i=0; i<1500; i++) stars.push({ x: Math.random()*6000, y: Math.random()*6000, size: Math.random()*2, alpha: Math.random() });
+
+        function startGameLoop() {
+            requestAnimationFrame(gameLoop);
+        }
+
         function gameLoop() {
-            ctx.fillStyle = "#030308"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // 1. Clear nền vũ trụ
+            ctx.fillStyle = "#030308"; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
             ctx.save();
             ctx.translate(window.innerWidth/2, window.innerHeight/2);
-            ctx.scale(cam.zoom, cam.zoom); ctx.translate(-cam.x, -cam.y);
+            ctx.scale(cam.zoom, cam.zoom); 
+            ctx.translate(-cam.x, -cam.y);
 
+            // 2. Vẽ lưới ranh giới map (Lùi nhẹ vào trong để test line)
             ctx.strokeStyle = "rgba(0, 255, 255, 0.2)"; ctx.lineWidth = 10;
-            ctx.strokeRect(0, 0, 6000, 6000);
+            ctx.strokeRect(5, 5, 5990, 5990);
 
+            // 3. Render sao
             ctx.fillStyle = "white";
             let vX = cam.x - (window.innerWidth/2 / cam.zoom); let vY = cam.y - (window.innerHeight/2 / cam.zoom);
             let vW = window.innerWidth / cam.zoom; let vH = window.innerHeight / cam.zoom;
@@ -176,15 +233,9 @@
             });
             ctx.globalAlpha = 1.0;
 
-            // Vẽ khối test trung tâm map để kiểm tra tọa độ
-            ctx.fillStyle = "red"; ctx.fillRect(2950, 2950, 100, 100);
-
             ctx.restore();
             requestAnimationFrame(gameLoop);
         }
-
-        clampCamera();
-        requestAnimationFrame(gameLoop);
     </script>
 </body>
 </html>
