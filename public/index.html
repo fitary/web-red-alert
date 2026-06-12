@@ -1,91 +1,233 @@
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
-    <title>Web Red Alert</title>
+    <meta charset="UTF-8">
+    <title>RTS Netcode Prototype</title>
     <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { background: #111; color: #fff; font-family: sans-serif; text-align: center; margin: 0; }
+        canvas { background: #222; border: 2px solid #555; margin-top: 10px; }
+        #ui { padding: 10px; background: #333; display: flex; justify-content: center; gap: 10px; }
+        button { padding: 8px 15px; cursor: pointer; font-weight: bold; }
+    </style>
 </head>
 <body>
+
     <div id="lobby">
-        <button onclick="createRoom()">Tạo Phòng Mới</button>
-        <br><br>
-        <input type="text" id="roomCodeInput" placeholder="Nhập mã phòng...">
-        <button onclick="joinRoom()">Tham Gia</button>
-        
-        <h3 id="status"></h3>
-        <button id="startBtn" style="display:none;" onclick="startGame()">Bắt Đầu Game</button>
+        <h2>RTS MULTIPLAYER TEST</h2>
+        <button onclick="createRoom()">TẠO PHÒNG (HOST)</button>
+        <input type="text" id="roomCode" placeholder="Mã phòng">
+        <button onclick="joinRoom()">THAM GIA (GUEST)</button>
+        <p id="status">Chưa kết nối...</p>
     </div>
 
-    <canvas id="gameCanvas" style="display:none;"></canvas>
+    <div id="gameUI" style="display: none;">
+        <div id="ui">
+            <span id="goldDisplay" style="color: gold; font-size: 20px; line-height: 35px;">Vàng: 100</span>
+            <button onclick="sendAction('BUY_MINER')" style="background: #aa0;">Mua Xe Vàng (50v)</button>
+            <button onclick="sendAction('BUY_UNIT')" style="background: #a00;">Mua Lính (30v)</button>
+            <button onclick="sendAction('ATTACK')" style="background: #0aa;">Tấn Công</button>
+        </div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
 
     <script>
         const socket = io();
-        let myRoom = "";
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
 
-        function createRoom() {
-            socket.emit('createRoom');
-        }
+        let myRole = '';
+        let myTeam = 0;
+        let myRoom = '';
+        let gameLoopId;
 
-        function joinRoom() {
-            const code = document.getElementById('roomCodeInput').value;
-            socket.emit('joinRoom', code);
-            myRoom = code;
-        }
+        // --- CẤU TRÚC DỮ LIỆU GAME (STATE) ---
+        let state = {
+            gold: { 1: 100, 2: 100, 3: 100 },
+            bases: {
+                1: { x: 100, y: 100, hp: 1000, color: '#00ffff' }, // Góc trên trái
+                2: { x: 700, y: 500, hp: 1000, color: '#ff3333' }, // Góc dưới phải
+                3: { x: 700, y: 100, hp: 1000, color: '#33ff33' }  // Góc trên phải
+            },
+            miners: [],
+            units: []
+        };
 
-        function startGame() {
-            socket.emit('startGame', myRoom);
-        }
+        const GOLD_MINE = { x: 400, y: 300, radius: 40 }; // Mỏ vàng ở giữa bản đồ
+        let aiBots = { 2: 'RUSH', 3: 'LATE' }; // Host tự bật AI cho slot 2 và 3 mặc định
 
-        // Lắng nghe phản hồi từ Server
-        socket.on('roomCreated', (roomCode) => {
-            myRoom = roomCode;
-            document.getElementById('status').innerText = "Mã phòng của bạn: " + roomCode;
-            document.getElementById('startBtn').style.display = "block"; // Host mới được bấm bắt đầu
+        // --- MẠNG LƯỚI (NETWORK) ---
+        function createRoom() { socket.emit('createRoom'); }
+        function joinRoom() { socket.emit('joinRoom', document.getElementById('roomCode').value); }
+
+        socket.on('init', (data) => {
+            myRole = data.role; myTeam = data.team; myRoom = data.roomCode;
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('gameUI').style.display = 'block';
+            startGame();
         });
 
-        socket.on('playerJoined', (players) => {
-            document.getElementById('status').innerText = "Số người trong phòng: " + players.length;
+        socket.on('playerJoined', (teamId) => {
+            delete aiBots[teamId]; // Tắt AI đi vì có người thật vào chơi
+            console.log(`Người chơi chiếm slot Đội ${teamId}. Đã tắt AI đội này.`);
         });
 
-        socket.on('gameStarted', (data) => {
-            document.getElementById('lobby').style.display = "none";
-            document.getElementById('gameCanvas').style.display = "block";
-            console.log(`Game bắt đầu với ${data.humans} người chơi và ${data.ais} máy AI`);
-            
-            // Bắt đầu khởi tạo đồ họa game
-            initGame(data);
+        // Guest nhận dữ liệu để cập nhật màn hình
+        socket.on('updateState', (newState) => {
+            if (myRole === 'guest') state = newState;
         });
 
-        // --- CÁC HÀM VẼ ĐỒ HỌA GAME ---
-        let canvas, ctx;
+        // Host nhận lệnh từ Guest
+        socket.on('receiveAction', (data) => {
+            if (myRole === 'host') executeAction(data.action, data.team);
+        });
 
-        function initGame(gameData) {
-            canvas = document.getElementById('gameCanvas');
-            ctx = canvas.getContext('2d'); // Lấy công cụ vẽ 2D
-
-            // Thiết lập kích thước khung hình game (ví dụ: 800x600)
-            canvas.width = 800;
-            canvas.height = 600;
-
-            // Gọi vòng lặp game
-            gameLoop();
+        // --- XỬ LÝ LỆNH (ACTION) ---
+        function sendAction(actionType) {
+            if (myRole === 'guest') {
+                socket.emit('sendAction', { roomCode: myRoom, action: actionType, team: myTeam });
+            } else {
+                executeAction(actionType, myTeam);
+            }
         }
 
+        function executeAction(action, team) {
+            let base = state.bases[team];
+            if (!base || base.hp <= 0) return;
+
+            if (action === 'BUY_MINER' && state.gold[team] >= 50) {
+                state.gold[team] -= 50;
+                state.miners.push({ x: base.x, y: base.y, team: team, status: 'to_mine' });
+            }
+            if (action === 'BUY_UNIT' && state.gold[team] >= 30) {
+                state.gold[team] -= 30;
+                state.units.push({ x: base.x + 30, y: base.y + 30, team: team, status: 'idle' });
+            }
+            if (action === 'ATTACK') {
+                // Đổi trạng thái lính thành tấn công căn cứ địch
+                state.units.filter(u => u.team === team).forEach(u => u.status = 'attacking');
+            }
+        }
+
+        // --- VÒNG LẶP GAME & LOGIC ---
+        function startGame() { gameLoopId = requestAnimationFrame(gameLoop); }
+
+        let frameTick = 0;
         function gameLoop() {
-            // 1. Xóa khung hình cũ và vẽ nền đất/cỏ (Màu xanh đậm)
-            ctx.fillStyle = '#2d5a27'; 
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if (myRole === 'host') {
+                frameTick++;
+                updateLogic();
+                if (frameTick % 60 === 0) runAI(); // Chạy AI mỗi 1 giây (60 frames)
+                
+                // Đồng bộ dữ liệu cho Guest mỗi khung hình
+                socket.emit('syncState', { roomCode: myRoom, state: state });
+            }
+            drawCanvas();
+            document.getElementById('goldDisplay').innerText = `Vàng: ${state.gold[myTeam]}`;
+            requestAnimationFrame(gameLoop);
+        }
 
-            // 2. Vẽ thử một "Nhà chính" (Hình vuông màu xanh dương)
-            ctx.fillStyle = '#0055ff';
-            ctx.fillRect(350, 250, 100, 100); // Tọa độ X:350, Y:250, Rộng:100, Cao:100
-            
-            // 3. Viết tên căn cứ
-            ctx.fillStyle = 'white';
-            ctx.font = '20px Arial';
-            ctx.fillText('Căn cứ Đội 1', 345, 235);
+        function updateLogic() {
+            // 1. Logic Xe Vàng (Đi đến mỏ -> Về nhà -> Cộng 10 vàng)
+            state.miners.forEach(m => {
+                let target = m.status === 'to_mine' ? GOLD_MINE : state.bases[m.team];
+                if (!target) return;
+                
+                let dx = target.x - m.x; let dy = target.y - m.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist > 10) {
+                    m.x += (dx / dist) * 2; // Tốc độ 2
+                    m.y += (dy / dist) * 2;
+                } else {
+                    if (m.status === 'to_mine') m.status = 'to_base';
+                    else {
+                        m.status = 'to_mine';
+                        state.gold[m.team] += 10;
+                    }
+                }
+            });
 
-            // Vòng lặp liên tục để cập nhật hình ảnh 60 khung hình/giây
-            requestAnimationFrame(gameLoop); 
+            // 2. Logic Lính Tấn Công
+            state.units.forEach(u => {
+                if (u.status !== 'attacking') return;
+                
+                // Tìm nhà địch đầu tiên còn sống
+                let enemyTeam = Object.keys(state.bases).find(t => t != u.team && state.bases[t].hp > 0);
+                if (!enemyTeam) { u.status = 'idle'; return; }
+
+                let target = state.bases[enemyTeam];
+                let dx = target.x - u.x; let dy = target.y - u.y;
+                let dist = Math.hypot(dx, dy);
+                
+                if (dist > 30) {
+                    u.x += (dx / dist) * 1.5; // Tốc độ lính
+                    u.y += (dy / dist) * 1.5;
+                } else {
+                    target.hp -= 0.5; // Gây sát thương liên tục
+                    u.hp = 0; // Cảm tử quân (đâm xong chết) - Để test dễ nhất
+                }
+            });
+
+            // Dọn dẹp lính đã chết
+            state.units = state.units.filter(u => u.hp !== 0);
+        }
+
+        function runAI() {
+            Object.keys(aiBots).forEach(team => {
+                let t = parseInt(team);
+                if (state.bases[t].hp <= 0) return;
+                
+                let style = aiBots[t];
+                let teamUnits = state.units.filter(u => u.team === t).length;
+                let teamMiners = state.miners.filter(m => m.team === t).length;
+
+                if (style === 'RUSH') {
+                    // Mua lính ngay khi có tiền, tấn công khi có 3 lính
+                    if (state.gold[t] >= 30) executeAction('BUY_UNIT', t);
+                    if (teamUnits >= 3) executeAction('ATTACK', t);
+                } 
+                else if (style === 'LATE') {
+                    // Mua 5 xe vàng trước, sau đó mới mua lính
+                    if (teamMiners < 5 && state.gold[t] >= 50) executeAction('BUY_MINER', t);
+                    else if (teamMiners >= 5 && state.gold[t] >= 30) executeAction('BUY_UNIT', t);
+                    
+                    if (teamUnits >= 10) executeAction('ATTACK', t); // Gom đủ 10 lính mới đi
+                }
+            });
+        }
+
+        // --- ĐỒ HỌA (Dùng cho cả Host và Guest) ---
+        function drawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Vẽ Mỏ Vàng
+            ctx.fillStyle = "rgba(255, 215, 0, 0.3)";
+            ctx.beginPath(); ctx.arc(GOLD_MINE.x, GOLD_MINE.y, GOLD_MINE.radius, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = "#fff"; ctx.fillText("MỎ VÀNG", GOLD_MINE.x - 25, GOLD_MINE.y + 5);
+
+            // Vẽ Căn Cứ
+            Object.keys(state.bases).forEach(team => {
+                let b = state.bases[team];
+                if (b.hp <= 0) return;
+                ctx.fillStyle = b.color;
+                ctx.fillRect(b.x - 25, b.y - 25, 50, 50);
+                
+                // Thanh máu
+                ctx.fillStyle = "red"; ctx.fillRect(b.x - 25, b.y - 35, 50, 5);
+                ctx.fillStyle = "green"; ctx.fillRect(b.x - 25, b.y - 35, 50 * (b.hp/1000), 5);
+            });
+
+            // Vẽ Xe Vàng (Hình tròn nhỏ)
+            state.miners.forEach(m => {
+                ctx.fillStyle = state.bases[m.team].color;
+                ctx.beginPath(); ctx.arc(m.x, m.y, 8, 0, Math.PI*2); ctx.fill();
+            });
+
+            // Vẽ Lính (Hình vuông nhỏ)
+            state.units.forEach(u => {
+                ctx.fillStyle = state.bases[u.team].color;
+                ctx.fillRect(u.x - 5, u.y - 5, 10, 10);
+            });
         }
     </script>
 </body>
