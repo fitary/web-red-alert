@@ -22,6 +22,17 @@
     </div>
 
     <div id="gameUI" style="display: none;">
+<div id="gameUI" style="display: none;">
+        <div id="ui">
+            <span id="roomCodeDisplay" style="color: #00ffff; font-size: 18px; line-height: 35px; margin-right: 15px; font-weight: bold;"></span>
+            
+            <span id="goldDisplay" style="color: gold; font-size: 20px; line-height: 35px;">Vàng: 100</span>
+            <button onclick="sendAction('BUY_MINER')" style="background: #aa0;">Mua Xe Vàng (50v)</button>
+            <button onclick="sendAction('BUY_UNIT')" style="background: #a00;">Mua Lính (30v)</button>
+            <button onclick="sendAction('ATTACK')" style="background: #0aa;">Tấn Công</button>
+        </div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
         <div id="ui">
             <span id="goldDisplay" style="color: gold; font-size: 20px; line-height: 35px;">Vàng: 100</span>
             <button onclick="sendAction('BUY_MINER')" style="background: #aa0;">Mua Xe Vàng (50v)</button>
@@ -64,6 +75,10 @@
             myRole = data.role; myTeam = data.team; myRoom = data.roomCode;
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('gameUI').style.display = 'block';
+            
+            // Dòng code mới thêm vào để hiển thị mã phòng:
+            document.getElementById('roomCodeDisplay').innerText = `MÃ PHÒNG: ${myRoom}`;
+            
             startGame();
         });
 
