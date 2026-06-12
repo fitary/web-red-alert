@@ -20,16 +20,34 @@
         <div id="screen-waiting" style="display:none;">
             <h1 id="display-code" style="color: cyan;">----</h1>
             <ul id="player-list"></ul>
+            <button id="btn-start" style="display:none;" onclick="handleStart()">BẮT ĐẦU TRÒ CHƠI</button>
         </div>
     </div>
+
     <canvas id="gameCanvas"></canvas>
     <script src="/socket.io/socket.io.js"></script>
     <script src="network.js"></script>
     <script src="game.js"></script>
-    <script>
+<script>
     let currentRoomCode = '';
 
-    // 1. Khi nhận được tín hiệu khởi tạo phòng (Tạo hoặc Join thành công)
+    // Hàm gọi từ HTML
+    function handleCreate() {
+        const name = document.getElementById('username').value;
+        Network.createRoom(name);
+    }
+
+    function handleJoin() {
+        const name = document.getElementById('username').value;
+        const code = document.getElementById('joinCode').value;
+        Network.joinRoom(code, name);
+    }
+
+    function handleStart() {
+        Network.startGame(currentRoomCode);
+    }
+
+    // Lắng nghe từ network.js
     Network.onInit((data) => {
         document.getElementById('screen-login').style.display = 'none';
         document.getElementById('screen-waiting').style.display = 'block';
@@ -37,7 +55,6 @@
         currentRoomCode = data.roomCode;
         document.getElementById('display-code').innerText = "MÃ PHÒNG: " + data.roomCode;
 
-        // Nếu là Host, hiển thị nút Bắt đầu
         if (data.role === 'host') {
             document.getElementById('btn-start').style.display = 'block';
         }
@@ -45,20 +62,16 @@
         renderPlayers(data.players);
     });
 
-    // 2. Cập nhật danh sách khi có người mới vào
     Network.onRoomUpdate((players) => {
         renderPlayers(players);
     });
 
-    // 3. Hàm render danh sách vào UI
     function renderPlayers(players) {
         const list = document.getElementById('player-list');
-        list.innerHTML = players.map(p => `<li>👤 ${p.name} ${p.id === socket.id ? '(Bạn)' : ''}</li>`).join('');
-    }
-
-    // 4. Hàm bấm Bắt đầu (gọi từ nút bấm trong HTML)
-    function handleStart() {
-        Network.startGame(currentRoomCode);
+        // socket.id được lấy từ file network.js
+        list.innerHTML = players.map(p => 
+            `<li>👤 ${p.name} ${p.id === socket.id ? '(Bạn)' : ''}</li>`
+        ).join('');
     }
 </script>
 
