@@ -3,60 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RTS Multiplayer v0.1.2</title>
+    <title>RTS v0.1.4</title>
+    <script src="/socket.io/socket.io.js"></script>
     <style>
+        /* RESET CSS - CẮT BỎ MỌI VIỀN THỪA */
         * { box-sizing: border-box; }
         body, html { 
             margin: 0; padding: 0; width: 100vw; height: 100vh; 
             background-color: #000; overflow: hidden; 
-            touch-action: none; user-select: none; -webkit-user-select: none;
-            font-family: sans-serif;
+            font-family: sans-serif; color: #fff;
         }
         
+        /* BẢN ĐỒ FULL MÀN HÌNH CHÌM XUỐNG DƯỚI */
         canvas { 
             position: absolute; top: 0; left: 0; 
-            width: 100vw; height: 100vh; z-index: 1; 
-            display: block; border: none; outline: none;
+            width: 100%; height: 100%; z-index: 1; display: block; 
         }
 
+        /* GIAO DIỆN NỔI LÊN TRÊN */
         #ui-layer { 
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             z-index: 10; pointer-events: none; 
         }
-
+        
         .screen { display: none; width: 100%; height: 100%; pointer-events: auto; }
-        .active { display: flex !important; flex-direction: column; align-items: center; justify-content: center; }
+        .active { display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
-        .box-panel {
-            background: rgba(10, 10, 20, 0.95); border: 2px solid #00ffff; padding: 30px;
-            border-radius: 8px; text-align: center; width: 350px; max-width: 90%;
-            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
-        }
+        .panel { background: rgba(20, 20, 30, 0.95); border: 2px solid #0ff; padding: 20px; border-radius: 8px; width: 320px; text-align: center; }
+        
+        input, button { width: 100%; margin-bottom: 10px; padding: 10px; font-weight: bold; border-radius: 4px; border: none; }
+        input { background: #111; color: #fff; border: 1px solid #0ff; text-align: center; }
+        button { cursor: pointer; background: #555; color: #fff; }
+        .btn-primary { background: #0ff; color: #000; }
+        .btn-success { background: #0a0; color: #fff; font-size: 18px; }
 
-        input, button { 
-            width: 100%; margin-bottom: 12px; padding: 12px; font-weight: bold; 
-            font-size: 16px; border-radius: 4px; border: none; outline: none;
-        }
-        input { background: #111; color: #fff; border: 1px solid #00ffff; text-align: center; }
-        button { cursor: pointer; transition: 0.1s; }
-        button:active { transform: scale(0.95); }
-
+        /* THANH TOP BAR TRONG GAME */
         #top-bar {
-            position: absolute; top: 0; left: 0; width: 100%; background: rgba(0, 0, 15, 0.85);
-            border-bottom: 1px solid #333; display: flex; justify-content: center; gap: 15px;
-            padding: 8px 0; font-size: 12px; font-weight: bold; pointer-events: auto;
+            position: absolute; top: 0; left: 0; width: 100%; background: rgba(0,0,10,0.8);
+            border-bottom: 1px solid #0ff; display: flex; justify-content: center; gap: 15px;
+            padding: 8px 0; font-size: 14px; font-weight: bold; pointer-events: auto;
         }
 
-        #player-list { list-style: none; padding: 0; margin: 20px 0; text-align: left; background: #111; border: 1px solid #444; border-radius: 4px; padding: 10px;}
-        #player-list li { padding: 5px 0; border-bottom: 1px dashed #333; color: #fff; }
-        #player-list li:last-child { border-bottom: none; }
-        .team-1 { color: #00ffff; } .team-2 { color: #ff3333; } .team-3 { color: #33ff33; }
-
-        #system-toast {
-            position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.8); color: #00ffff; border: 1px solid #00ffff;
-            padding: 8px 20px; border-radius: 20px; font-weight: bold; font-size: 12px; display: none;
-        }
+        #system-msg { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); background: #0a0; padding: 5px 15px; border-radius: 20px; display: none; }
+        ul { list-style: none; padding: 0; text-align: left; }
+        li { padding: 5px; border-bottom: 1px dashed #444; }
     </style>
 </head>
 <body>
@@ -65,162 +55,126 @@
 
     <div id="ui-layer">
         
+        <div id="system-msg">...</div>
+
         <div id="top-bar" style="display: none;">
-            <div style="color: #ffd700;" id="stat-gold">Vàng: 100</div>
-            <div style="color: #00ffff;" id="stat-p1">P1: ⚔️0</div>
-            <div style="color: #ff3333;" id="stat-p2">P2: ⚔️0</div>
-            <div style="color: #33ff33;" id="stat-p3">P3: ⚔️0</div>
+            <span style="color: gold;">Vàng: 100</span>
+            <span style="color: #0ff;">P1: ⚔️0</span>
+            <span style="color: #f33;">P2: ⚔️0</span>
+            <span style="color: #3f3;">P3: ⚔️0</span>
         </div>
 
-        <div id="system-toast">...</div>
-
         <div id="screen-login" class="screen active">
-            <div class="box-panel">
-                <h2 style="color: #00ffff; margin-top: 0;">RTS v0.1.2</h2>
-                <p id="serverStatus" style="color: #ff4444; font-weight: bold; font-size: 14px;">Đang kết nối Server...</p>
+            <div class="panel">
+                <h2 style="color: #0ff; margin-top: 0;">RTS v0.1.4</h2>
+                <p id="connect-status" style="color: #f33;">Đang kết nối Server...</p>
                 
-                <input type="text" id="username" placeholder="Nhập tên của bạn" maxlength="15">
-                <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;">
+                <input type="text" id="username" placeholder="Tên hiển thị (VD: Hiếu)">
+                <hr style="border-color: #333; margin: 15px 0;">
                 
-                <div id="action-buttons" style="display: none;">
-                    <button onclick="createHost()" style="background: #00ffff; color: #000;">TẠO PHÒNG MỚI (HOST)</button>
-                    <div style="display: flex; gap: 10px; margin-top: 10px;">
-                        <input type="text" id="joinCode" placeholder="MÃ PHÒNG" style="margin-bottom: 0; text-transform: uppercase;">
-                        <button onclick="joinGuest()" style="background: #555; color: #fff; margin-bottom: 0;">THAM GIA</button>
-                    </div>
+                <div id="action-zone" style="display:none;">
+                    <button class="btn-primary" onclick="createRoom()">TẠO PHÒNG (HOST)</button>
+                    <input type="text" id="roomCode" placeholder="MÃ PHÒNG (NẾU CÓ)" style="margin-top: 15px; text-transform: uppercase;">
+                    <button onclick="joinRoom()">THAM GIA (GUEST)</button>
                 </div>
             </div>
         </div>
 
         <div id="screen-waiting" class="screen">
-            <div class="box-panel">
-                <h3 style="color: #888; margin: 0 0 5px 0;">MÃ CHIA SẺ</h3>
-                <h1 id="displayRoomCode" style="color: #00ffff; margin: 0 0 20px 0; font-size: 40px; letter-spacing: 5px;">----</h1>
-                
+            <div class="panel">
+                <h3 style="color: #888; margin:0;">MÃ PHÒNG CỦA BẠN</h3>
+                <h1 id="display-code" style="color: #0ff; letter-spacing: 3px; font-size: 36px; margin: 5px 0 15px;">----</h1>
                 <ul id="player-list"></ul>
-
-                <button id="btnStartGame" onclick="hostStartGame()" style="display: none; background: #0a0; color: #fff; font-size: 18px;">BẮT ĐẦU CHIẾN DỊCH</button>
-                <p id="guestWaitMsg" style="display: none; color: #aaa; font-style: italic; font-size: 14px;">Đang chờ Host bắt đầu game...</p>
+                <button id="btn-start" class="btn-success" style="display:none;" onclick="startGame()">BẮT ĐẦU VÀO GAME</button>
+                <p id="guest-msg" style="display:none; color: #888;">Đang đợi Host bấm bắt đầu...</p>
             </div>
         </div>
 
     </div>
 
     <script>
-        // ÉP DÙNG WEBSOCKET VÀ POLLING
-        const socket = io({
-            transports: ['websocket', 'polling']
-        });
-        
+        const socket = io();
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
-        // --- CHỐNG LỖI KẾT NỐI ---
-        socket.on('connect', () => {
-            document.getElementById('serverStatus').innerText = "Đã kết nối Server thành công!";
-            document.getElementById('serverStatus').style.color = "#00ff00";
-            document.getElementById('action-buttons').style.display = 'block'; 
-        });
-
-        // BẮT LỖI VÀ IN RA MÀN HÌNH NẾU SERVER TỪ CHỐI
-        socket.on('connect_error', (err) => {
-            document.getElementById('serverStatus').innerText = "Lỗi mạng: " + err.message;
-            console.error("Chi tiết lỗi Socket.io:", err);
-        });
-
-        // --- RESIZE CANVAS ---
         let dpr = window.devicePixelRatio || 1;
-        function resizeCanvas() {
-            canvas.width = window.innerWidth * dpr;
-            canvas.height = window.innerHeight * dpr;
-            ctx.scale(dpr, dpr);
-        }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
+        function resizeCanvas() { canvas.width = window.innerWidth * dpr; canvas.height = window.innerHeight * dpr; ctx.scale(dpr, dpr); }
+        window.addEventListener('resize', resizeCanvas); resizeCanvas();
 
-        let myRole = ''; let myTeam = 0; let myRoom = ''; let myName = '';
-        
-        function switchScreen(screenId) {
-            document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
-            if(screenId) document.getElementById(screenId).classList.add('active');
-        }
+        let myRole = ''; let myRoom = '';
 
-        function showToast(msg) {
-            let t = document.getElementById('system-toast');
-            t.innerText = msg; t.style.display = 'block';
-            setTimeout(() => t.style.display = 'none', 3000);
+        // --- KẾT NỐI VÀ CHUYỂN MÀN HÌNH ---
+        socket.on('connect', () => {
+            document.getElementById('connect-status').innerText = "Đã kết nối Server!";
+            document.getElementById('connect-status').style.color = "#0f0";
+            document.getElementById('action-zone').style.display = "block";
+        });
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            if(id) document.getElementById(id).classList.add('active');
         }
 
-        function createHost() {
-            myName = document.getElementById('username').value.trim() || 'Host';
-            socket.emit('createRoom', myName);
+        function toast(msg) {
+            let el = document.getElementById('system-msg');
+            el.innerText = msg; el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 3000);
         }
 
-        function joinGuest() {
-            myName = document.getElementById('username').value.trim() || 'Guest';
-            let code = document.getElementById('joinCode').value.toUpperCase().trim();
-            if(code) socket.emit('joinRoom', { code: code, username: myName });
+        // --- GỬI LỆNH LÊN SERVER ---
+        function createRoom() {
+            let name = document.getElementById('username').value.trim() || 'Host';
+            socket.emit('createRoom', name);
         }
 
-        function hostStartGame() {
-            socket.emit('startGame', myRoom);
+        function joinRoom() {
+            let name = document.getElementById('username').value.trim() || 'Guest';
+            let code = document.getElementById('roomCode').value.trim().toUpperCase();
+            if(code) socket.emit('joinRoom', { code, username: name });
         }
 
+        function startGame() { socket.emit('startGame', myRoom); }
+
+        // --- NHẬN LỆNH TỪ SERVER ---
         socket.on('init', (data) => {
-            myRole = data.role; myTeam = data.team; myRoom = data.roomCode;
+            myRole = data.role; myRoom = data.roomCode;
+            document.getElementById('display-code').innerText = myRoom;
+            showScreen('screen-waiting');
+
+            if(myRole === 'host') document.getElementById('btn-start').style.display = 'block';
+            else document.getElementById('guest-msg').style.display = 'block';
             
-            switchScreen('screen-waiting');
-            document.getElementById('displayRoomCode').innerText = myRoom;
-
-            if (myRole === 'host') {
-                document.getElementById('btnStartGame').style.display = 'block';
-            } else {
-                document.getElementById('guestWaitMsg').style.display = 'block';
-            }
-            renderPlayerList(data.players);
+            updateList(data.players);
         });
 
-        socket.on('roomUpdated', (players) => {
-            renderPlayerList(players);
-        });
-
-        socket.on('systemMsg', (msg) => { showToast(msg); });
+        socket.on('roomUpdated', (players) => updateList(players));
+        socket.on('systemMsg', (msg) => toast(msg));
 
         socket.on('gameStarted', () => {
-            switchScreen(null); 
-            document.getElementById('top-bar').style.display = 'flex'; 
-            startGameLoop(); 
-            showToast("BẮT ĐẦU CHIẾN DỊCH!");
+            showScreen(null); // Tắt mọi UI
+            document.getElementById('top-bar').style.display = 'flex'; // Mở thanh Top Bar
+            requestAnimationFrame(gameLoop); // Bật đồ họa
         });
 
-        function renderPlayerList(players) {
-            if (!players) return; // Chống lỗi ngầm nếu server chưa kịp gửi mảng players
+        function updateList(players) {
             let html = '';
-            players.forEach(p => {
-                let isMe = p.id === socket.id ? ' (Bạn)' : '';
-                html += `<li class="team-${p.team}">[Đội ${p.team}] ${p.name}${isMe}</li>`;
-            });
+            players.forEach(p => html += `<li>[Đội ${p.team}] ${p.name}</li>`);
             document.getElementById('player-list').innerHTML = html;
         }
 
-        // --- RENDER ENGINE CHO GAME ---
+        // --- ĐỒ HỌA GAME TRỐNG (CƠ BẢN) ---
         let cam = { x: 3000, y: 3000, zoom: 0.5 };
         const stars = [];
         for(let i=0; i<1500; i++) stars.push({ x: Math.random()*6000, y: Math.random()*6000, size: Math.random()*2, alpha: Math.random() });
 
-        function startGameLoop() {
-            requestAnimationFrame(gameLoop);
-        }
-
         function gameLoop() {
-            ctx.fillStyle = "#030308"; 
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "#030308"; ctx.fillRect(0, 0, canvas.width, canvas.height);
             
             ctx.save();
             ctx.translate(window.innerWidth/2, window.innerHeight/2);
-            ctx.scale(cam.zoom, cam.zoom); 
-            ctx.translate(-cam.x, -cam.y);
+            ctx.scale(cam.zoom, cam.zoom); ctx.translate(-cam.x, -cam.y);
 
+            // Vẽ map (Lùi nhẹ 5px để kiểm tra viền)
             ctx.strokeStyle = "rgba(0, 255, 255, 0.2)"; ctx.lineWidth = 10;
             ctx.strokeRect(5, 5, 5990, 5990);
 
@@ -235,7 +189,6 @@
                     ctx.globalAlpha = s.alpha; ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI*2); ctx.fill();
                 }
             });
-            ctx.globalAlpha = 1.0;
 
             ctx.restore();
             requestAnimationFrame(gameLoop);

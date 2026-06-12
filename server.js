@@ -5,18 +5,15 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
-// THÊM CORS ĐỂ RENDER KHÔNG CHẶN KẾT NỐI
-const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
+// Cấu hình CORS mở rộng tương tự bản gốc để Render không chặn
+const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static('public'));
 const rooms = {};
 
 io.on('connection', (socket) => {
+    console.log('Thiết bị kết nối:', socket.id);
+
     // 1. Tạo phòng
     socket.on('createRoom', (username) => {
         const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -26,7 +23,6 @@ io.on('connection', (socket) => {
             players: [{ id: socket.id, team: 1, name: username || 'Host' }]
         };
         socket.join(roomCode);
-        
         socket.emit('init', { role: 'host', team: 1, roomCode: roomCode, players: rooms[roomCode].players });
     });
 
@@ -48,7 +44,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 3. Host bấm Bắt Đầu
+    // 3. Bắt đầu Game
     socket.on('startGame', (roomCode) => {
         let room = rooms[roomCode];
         if(room && room.host === socket.id) {
@@ -57,8 +53,10 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('disconnect', () => {});
+    socket.on('disconnect', () => {
+        console.log('Ngắt kết nối:', socket.id);
+    });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`[RTS SERVER] Đang chạy tại port ${PORT} - Phiên bản v0.1.3`));
+server.listen(PORT, () => console.log(`Server v0.1.4 đang chạy tại port ${PORT}`));
