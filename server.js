@@ -4,13 +4,19 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+
+// THÊM CORS ĐỂ RENDER KHÔNG CHẶN KẾT NỐI
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 
 app.use(express.static('public'));
 const rooms = {};
 
 io.on('connection', (socket) => {
-    
     // 1. Tạo phòng
     socket.on('createRoom', (username) => {
         const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -51,10 +57,8 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('disconnect', () => {
-        // Logic xử lý ngắt kết nối sẽ thêm sau
-    });
+    socket.on('disconnect', () => {});
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`[RTS SERVER] Đang chạy tại port ${PORT} - Phiên bản v0.1.2`));
+server.listen(PORT, () => console.log(`[RTS SERVER] Đang chạy tại port ${PORT} - Phiên bản v0.1.3`));
