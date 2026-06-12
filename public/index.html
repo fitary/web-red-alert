@@ -9,27 +9,52 @@
 </style>
     </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
-    <div id="ui-layer">
+    <div id="ui-layer" style="position: absolute; z-index: 10;">
+        <div id="screen-login">
+            <input type="text" id="username" placeholder="Tên của bạn">
+            <button onclick="handleCreate()">TẠO PHÒNG (HOST)</button>
+            <input type="text" id="joinCode" placeholder="MÃ PHÒNG">
+            <button onclick="handleJoin()">THAM GIA (GUEST)</button>
         </div>
-
-<script src="/socket.io/socket.io.js"></script>
-    
+        
+        <div id="screen-waiting" style="display:none;">
+            <h1 id="display-code" style="color: cyan;">----</h1>
+            <ul id="player-list"></ul>
+        </div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <script src="/socket.io/socket.io.js"></script>
     <script src="network.js"></script>
     <script src="game.js"></script>
-    
     <script>
-        // Gọi hàm từ game.js để bắt đầu vòng lặp vẽ
-        document.addEventListener('DOMContentLoaded', () => {
-             console.log("Game đã sẵn sàng!");
-             
-             // KÍCH HOẠT ĐỒ HỌA
-             if (typeof startRendering === 'function') {
-                 startRendering();
-             } else {
-                 console.error("Hàm startRendering không tồn tại trong game.js!");
-             }
+        // Các hàm xử lý UI
+        function handleCreate() {
+            const name = document.getElementById('username').value;
+            Network.createRoom(name);
+        }
+        
+        function handleJoin() {
+            const name = document.getElementById('username').value;
+            const code = document.getElementById('joinCode').value;
+            Network.joinRoom(code, name);
+        }
+
+        // Lắng nghe sự kiện từ Network.js
+        Network.onInit((data) => {
+            document.getElementById('screen-login').style.display = 'none';
+            document.getElementById('screen-waiting').style.display = 'block';
+            document.getElementById('display-code').innerText = data.roomCode;
+            renderPlayers(data.players);
         });
+
+        Network.onRoomUpdate((players) => {
+            renderPlayers(players);
+        });
+
+        function renderPlayers(players) {
+            const list = document.getElementById('player-list');
+            list.innerHTML = players.map(p => `<li>${p.name}</li>`).join('');
+        }
     </script>
 </body>
 </html>
