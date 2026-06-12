@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>RTS Netcode Prototype</title>
+    <title>RTS Netcode Prototype v2.1</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
         body { background: #111; color: #fff; font-family: sans-serif; text-align: center; margin: 0; }
@@ -11,7 +11,6 @@
         button { padding: 8px 15px; cursor: pointer; font-weight: bold; border: none; border-radius: 4px;}
         button:hover { opacity: 0.8; }
         
-        /* CSS cho các màn hình */
         .screen { display: none; margin-top: 50px; }
         #lobby.active, #waitingRoom.active, #gameUI.active { display: block; }
         input { padding: 8px; font-size: 16px; width: 150px; text-align: center; font-weight: bold; }
@@ -21,16 +20,20 @@
 
     <div id="lobby" class="screen active">
         <h2>RTS MULTIPLAYER TEST</h2>
+        <h3 style="color: #ffff00; margin-top: -10px;">[ PHIÊN BẢN v2.1 ]</h3>
+        <p id="serverStatus" style="color: #ff4444; font-weight: bold;">Trạng thái: Đang kết nối Server...</p>
+        
         <br>
-        <button onclick="createRoom()" style="background: #00ffff; color: #000; font-size: 16px;">TẠO PHÒNG (HOST)</button>
+        <button id="btnCreate" onclick="createRoom()" style="background: #00ffff; color: #000; font-size: 16px; display: none;">TẠO PHÒNG (HOST)</button>
         <br><br><br>
         <div style="border-top: 1px solid #444; padding-top: 20px; width: 300px; margin: 0 auto;">
             <input type="text" id="roomCode" placeholder="Nhập mã...">
-            <button onclick="joinRoom()" style="background: #555; color: #fff;">THAM GIA (GUEST)</button>
+            <button id="btnJoin" onclick="joinRoom()" style="background: #555; color: #fff; display: none;">THAM GIA (GUEST)</button>
         </div>
     </div>
 
     <div id="waitingRoom" class="screen">
+        <h3 style="color: #ffff00; margin-top: 0;">[ PHIÊN BẢN v2.1 ]</h3>
         <h2>PHÒNG CHỜ CHIẾN DỊCH</h2>
         <h1 id="roomCodeDisplay" style="color: #00ffff; letter-spacing: 2px; font-size: 36px;">MÃ: ----</h1>
         <p id="playerCountDisplay" style="font-size: 18px; color: #ffd700;">Số người tham gia: 1 / 3</p>
@@ -43,7 +46,7 @@
     <div id="gameUI" class="screen" style="margin-top: 0;">
         <div id="ui">
             <span id="goldDisplay" style="color: gold; font-size: 20px; line-height: 35px; width: 150px; text-align: left;">Vàng: 100</span>
-            <button onclick="sendAction('BUY_MINER')" style="background: #aa0; color: #000;">Mua Xe Vàng (50v)</button>
+            <button onclick="sendAction('BUY_MINER')" style="background: #aa0; color: #000;">Mua Xe (50v)</button>
             <button onclick="sendAction('BUY_UNIT')" style="background: #a00; color: #fff;">Mua Lính (30v)</button>
             <button onclick="sendAction('ATTACK')" style="background: #0aa; color: #fff;">Tấn Công</button>
         </div>
@@ -59,17 +62,27 @@
         let myTeam = 0;
         let myRoom = '';
         let gameLoopId;
-        let syncInterval; // Bộ đếm nhịp đồng bộ phòng chờ
+        let syncInterval; 
+
+        // --- Kiểm tra kết nối mạng ---
+        socket.on('connect', () => {
+            console.log("Đã kết nối được với Server Node.js!");
+            document.getElementById('serverStatus').innerText = "Trạng thái: Đã kết nối Server!";
+            document.getElementById('serverStatus').style.color = "#00ff00";
+            // Chỉ hiện nút Tạo/Tham gia khi đã kết nối thành công
+            document.getElementById('btnCreate').style.display = 'inline-block';
+            document.getElementById('btnJoin').style.display = 'inline-block';
+        });
 
         // --- CẤU TRÚC DỮ LIỆU GAME (STATE) ---
         let state = {
-            isPlaying: false,  // Biến kiểm soát trạng thái phòng
-            playerCount: 1,    // Số người đang có trong phòng
+            isPlaying: false, 
+            playerCount: 1,  
             gold: { 1: 100, 2: 100, 3: 100 },
             bases: {
-                1: { x: 100, y: 100, hp: 1000, color: '#00ffff' }, // Đội 1 (Host)
-                2: { x: 700, y: 500, hp: 1000, color: '#ff3333' }, // Đội 2 (Guest 1)
-                3: { x: 700, y: 100, hp: 1000, color: '#33ff33' }  // Đội 3 (Guest 2)
+                1: { x: 100, y: 100, hp: 1000, color: '#00ffff' },
+                2: { x: 700, y: 500, hp: 1000, color: '#ff3333' },
+                3: { x: 700, y: 100, hp: 1000, color: '#33ff33' }
             },
             miners: [],
             units: []
@@ -85,21 +98,28 @@
         }
 
         // --- MẠNG LƯỚI (NETWORK) ---
-        function createRoom() { socket.emit('createRoom'); }
-        function joinRoom() { 
-            let code = document.getElementById('roomCode').value.toUpperCase().trim();
-            if(code) socket.emit('joinRoom', code); 
+        function createRoom() { 
+            console.log("Bấm nút tạo phòng...");
+            socket.emit('createRoom'); 
         }
 
-        // Lắng nghe tín hiệu khởi tạo từ Server
+        function joinRoom() { 
+            let code = document.getElementById('roomCode').value.toUpperCase().trim();
+            if(code) {
+                console.log("Bấm nút tham gia mã:", code);
+                socket.emit('joinRoom', code); 
+            }
+        }
+
         socket.on('init', (data) => {
+            console.log("Nhận được lệnh khởi tạo phòng:", data);
             myRole = data.role; myTeam = data.team; myRoom = data.roomCode;
+            
             showScreen('waitingRoom');
             document.getElementById('roomCodeDisplay').innerText = `MÃ: ${myRoom}`;
 
             if (myRole === 'host') {
                 document.getElementById('btnStart').style.display = 'inline-block';
-                // Host liên tục gửi dữ liệu phòng chờ cho Guest (mỗi nửa giây)
                 syncInterval = setInterval(() => {
                     socket.emit('syncState', { roomCode: myRoom, state: state });
                 }, 500);
@@ -108,52 +128,46 @@
             }
         });
 
-        // Báo cho Host biết có người mới vào
         socket.on('playerJoined', (teamId) => {
+            console.log("Có người chơi mới vào slot Đội", teamId);
             delete aiBots[teamId]; 
-            state.playerCount++; // Tăng số người
+            state.playerCount++;
             document.getElementById('playerCountDisplay').innerText = `Số người tham gia: ${state.playerCount} / 3`;
         });
 
-        // Guest nhận dữ liệu State (Dùng cho cả lúc ở sảnh chờ lẫn lúc chơi)
         socket.on('updateState', (newState) => {
             if (myRole === 'guest') {
                 state = newState;
-                // Cập nhật số người trên màn hình Guest
                 document.getElementById('playerCountDisplay').innerText = `Số người tham gia: ${state.playerCount} / 3`;
                 
-                // Nếu Host đã bấm Start mà Guest chưa bật gameLoop -> Kích hoạt vào game
                 if (state.isPlaying && !gameLoopId) {
                     enterGameScreen();
                 }
             }
         });
 
-        // Host nhận lệnh từ Guest
         socket.on('receiveAction', (data) => {
             if (myRole === 'host') executeAction(data.action, data.team);
         });
 
         // --- LUỒNG BẮT ĐẦU GAME ---
         function hostStartGame() {
-            state.isPlaying = true; // Chuyển cờ trạng thái
-            clearInterval(syncInterval); // Tắt bộ đồng bộ sảnh chờ
-            socket.emit('syncState', { roomCode: myRoom, state: state }); // Bắn tín hiệu cuối để kéo Guest vào game
+            console.log("Host bấm Bắt đầu game!");
+            state.isPlaying = true;
+            clearInterval(syncInterval);
+            socket.emit('syncState', { roomCode: myRoom, state: state });
             enterGameScreen();
         }
 
         function enterGameScreen() {
             showScreen('gameUI');
-            gameLoopId = requestAnimationFrame(gameLoop); // Bắt đầu vòng lặp đồ họa
+            gameLoopId = requestAnimationFrame(gameLoop);
         }
 
         // --- XỬ LÝ LỆNH (ACTION) ---
         function sendAction(actionType) {
-            if (myRole === 'guest') {
-                socket.emit('sendAction', { roomCode: myRoom, action: actionType, team: myTeam });
-            } else {
-                executeAction(actionType, myTeam);
-            }
+            if (myRole === 'guest') socket.emit('sendAction', { roomCode: myRoom, action: actionType, team: myTeam });
+            else executeAction(actionType, myTeam);
         }
 
         function executeAction(action, team) {
@@ -180,18 +194,15 @@
                 frameTick++;
                 updateLogic();
                 if (frameTick % 60 === 0) runAI(); 
-                
-                // Host đồng bộ liên tục 60 khung hình/giây
                 socket.emit('syncState', { roomCode: myRoom, state: state });
             }
             
-            drawCanvas(); // Vẽ ra màn hình
+            drawCanvas();
             document.getElementById('goldDisplay').innerText = `Vàng: ${Math.floor(state.gold[myTeam])}`;
             requestAnimationFrame(gameLoop);
         }
 
         function updateLogic() {
-            // Logic Xe Vàng
             state.miners.forEach(m => {
                 let target = m.status === 'to_mine' ? GOLD_MINE : state.bases[m.team];
                 if (!target) return;
@@ -199,18 +210,13 @@
                 let dx = target.x - m.x; let dy = target.y - m.y;
                 let dist = Math.hypot(dx, dy);
                 if (dist > 10) {
-                    m.x += (dx / dist) * 2; 
-                    m.y += (dy / dist) * 2;
+                    m.x += (dx / dist) * 2; m.y += (dy / dist) * 2;
                 } else {
                     if (m.status === 'to_mine') m.status = 'to_base';
-                    else {
-                        m.status = 'to_mine';
-                        state.gold[m.team] += 10;
-                    }
+                    else { m.status = 'to_mine'; state.gold[m.team] += 10; }
                 }
             });
 
-            // Logic Lính Tấn Công
             state.units.forEach(u => {
                 if (u.status !== 'attacking') return;
                 let enemyTeam = Object.keys(state.bases).find(t => t != u.team && state.bases[t].hp > 0);
@@ -221,12 +227,8 @@
                 let dist = Math.hypot(dx, dy);
                 
                 if (dist > 30) {
-                    u.x += (dx / dist) * 1.5; 
-                    u.y += (dy / dist) * 1.5;
-                } else {
-                    target.hp -= 0.5; 
-                    u.hp = 0; 
-                }
+                    u.x += (dx / dist) * 1.5; u.y += (dy / dist) * 1.5;
+                } else { target.hp -= 0.5; u.hp = 0; }
             });
 
             state.units = state.units.filter(u => u.hp !== 0);
@@ -244,8 +246,7 @@
                 if (style === 'RUSH') {
                     if (state.gold[t] >= 30) executeAction('BUY_UNIT', t);
                     if (teamUnits >= 3) executeAction('ATTACK', t);
-                } 
-                else if (style === 'LATE') {
+                } else if (style === 'LATE') {
                     if (teamMiners < 5 && state.gold[t] >= 50) executeAction('BUY_MINER', t);
                     else if (teamMiners >= 5 && state.gold[t] >= 30) executeAction('BUY_UNIT', t);
                     if (teamUnits >= 10) executeAction('ATTACK', t); 
@@ -257,6 +258,35 @@
         function drawCanvas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Vẽ Mỏ Vàng
             ctx.fillStyle = "rgba(255, 215, 0, 0.3)";
-            ctx.beginPath();
+            ctx.beginPath(); ctx.arc(GOLD_MINE.x, GOLD_MINE.y, GOLD_MINE.radius, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = "#fff"; ctx.fillText("MỎ VÀNG", GOLD_MINE.x - 25, GOLD_MINE.y + 5);
+
+            Object.keys(state.bases).forEach(team => {
+                let b = state.bases[team];
+                if (b.hp <= 0) return;
+                ctx.fillStyle = b.color;
+                ctx.fillRect(b.x - 25, b.y - 25, 50, 50);
+                
+                ctx.fillStyle = "red"; ctx.fillRect(b.x - 25, b.y - 35, 50, 5);
+                ctx.fillStyle = "green"; ctx.fillRect(b.x - 25, b.y - 35, 50 * (b.hp/1000), 5);
+                
+                if (parseInt(team) === myTeam) {
+                    ctx.strokeStyle = "white"; ctx.lineWidth = 2;
+                    ctx.strokeRect(b.x - 28, b.y - 28, 56, 56);
+                }
+            });
+
+            state.miners.forEach(m => {
+                ctx.fillStyle = state.bases[m.team].color;
+                ctx.beginPath(); ctx.arc(m.x, m.y, 8, 0, Math.PI*2); ctx.fill();
+            });
+
+            state.units.forEach(u => {
+                ctx.fillStyle = state.bases[u.team].color;
+                ctx.fillRect(u.x - 5, u.y - 5, 10, 10);
+            });
+        }
+    </script>
+</body>
+</html>
