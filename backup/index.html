@@ -261,7 +261,7 @@ let matchStartTime = 0;
             isOnline = false;
         }
 
-if (socket) {
+        if (socket) {
             socket.on('init', (data) => {
                 isOnline = true;
                 myRole = data.role;
@@ -276,15 +276,7 @@ if (socket) {
                 else document.getElementById('wait-msg').style.display = 'block';
                 
                 updatePlayerList(data.players);
-            }); // <--- QUAN TRỌNG: Phải đóng ngoặc của hàm init tại đây!
-
-            // Đặt ngang hàng với hàm init bên trên
-            socket.on('updateGameState', (state) => {
-                if (myRole === 'guest') serverGameState = state;
             });
-
-            // ... (các sự kiện socket.on khác như roomUpdated, systemMsg nằm ở dưới đây) ...
-        }
 
             socket.on('roomUpdated', (players) => {
                 updatePlayerList(players);
@@ -1320,12 +1312,8 @@ if (socket) {
 
         function updateAllAI() {
             ALL_TEAMS.forEach(team => {
-if(team === 'player') return;
-                // THÊM DÒNG NÀY: Nếu phe này có người thật điều khiển (Guest), thì tắt AI đi
-                if(isOnline && humanTeams.includes(team)) return; 
-                
+                if(team === 'player') return;
                 let base = getBase(team); if (!base) return; let bData = gameData[team];
-                // ... [Giữ nguyên toàn bộ logic AI cũ bên dưới] ...
                 
                 let barrack = buildings.find(b => b.team === team && b.type === 'Barracks');
                 let aiMiners = miners.filter(m => m.team === team).length + base.queue.filter(q => q.unitType === 'miner').length; 
@@ -1507,43 +1495,6 @@ if(team === 'player') return;
         }
 
         let frameCount = 0;
-function sendSyncData() {
-            let state = {
-                units: units.map(u => ({ x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: u.maxHp, team: u.team, unitType: u.unitType, angle: u.angle, isDrone: u.isDrone, laserDrawFrames: u.laserDrawFrames, laserTarget: u.laserTarget ? {x: u.laserTarget.x, y: u.laserTarget.y, markedForDeletion: false} : null })),
-                buildings: buildings.map(b => ({ x: Math.round(b.x), y: Math.round(b.y), hp: Math.round(b.hp), maxHp: b.maxHp, team: b.team, type: b.type, queue: b.queue, laserDrawFrames: b.laserDrawFrames, laserTarget: b.laserTarget ? {x: b.laserTarget.x, y: b.laserTarget.y, markedForDeletion: false} : null })),
-                miners: miners.map(m => ({ x: Math.round(m.x), y: Math.round(m.y), hp: Math.round(m.hp), maxHp: m.maxHp, team: m.team, angle: m.angle, carryAmount: m.carryAmount })),
-                turrets: turrets.map(t => ({ x: Math.round(t.x), y: Math.round(t.y), hp: Math.round(t.hp), maxHp: t.maxHp, team: t.team, angle: t.angle, laserDrawFrames: t.laserDrawFrames, laserTarget: t.laserTarget ? {x: t.laserTarget.x, y: t.laserTarget.y, markedForDeletion: false} : null })),
-                reactors: reactors.map(r => ({ x: Math.round(r.x), y: Math.round(r.y), hp: Math.round(r.hp), maxHp: r.maxHp, team: r.team })),
-                mines: mines.map(m => ({ x: Math.round(m.x), y: Math.round(m.y), capacity: m.capacity, radius: m.radius })),
-                explosions: explosions.map(e => ({ x: Math.round(e.x), y: Math.round(e.y), timer: e.timer })),
-                goldSync: {}
-            };
-            ALL_TEAMS.forEach(team => {
-                if(gameData[team]) state.goldSync[team] = { gold: gameData[team].gold, barracksLevel: gameData[team].barracksLevel };
-            });
-            socket.emit('syncGameState', { roomCode: myRoomCode, state: state });
-        }
-
-        function checkGameOverStatus(m, s) {
-            let pBase = getBase('player'); let botBases = buildings.filter(b => b.team !== 'player' && b.type === 'Base').length;
-            if (!pBase && !gameOver) {
-                gameOver = true; document.getElementById('game-over').style.display = 'flex';
-                let destroyedBases = 7 - botBases; let reward = destroyedBases * 100;
-                profile.darkMatter += reward;
-                let text = document.getElementById('result-text'); 
-                let rewardMsg = reward > 0 ? `<br>Tiêu diệt ${destroyedBases} Thế lực: +${reward} LÕI` : "";
-                text.innerHTML = `HẠM ĐỘI BỊ TIÊU DIỆT!${rewardMsg}<br><span style="font-size:12px; color:#aaa;">(Thời gian: ${m}:${s} - Số dư: ${profile.darkMatter} Lõi)</span>`; 
-                text.style.color = "#ff4444"; saveProfile(); 
-            } else if (botBases === 0 && !gameOver && frameCount > 30) {
-                gameOver = true; document.getElementById('game-over').style.display = 'flex';
-                profile.darkMatter += 1050; 
-                let text = document.getElementById('result-text'); 
-                text.innerHTML = `BÁ CHỦ TINH HỆ TẦNG ${profile.sector}!<br><span style="font-size:12px; color:#aaa;">TERRAN đã quét sạch các thế lực thù địch.<br>Thời gian: ${m}:${s}<br>+1050 LÕI HẮC THẠCH</span>`; text.style.color = "#00ffff";
-                profile.sector += 1; saveProfile();
-            }
-        }
-
-
         function gameLoop() {
             if (gameOver || !gameStarted) return;
             
@@ -1555,91 +1506,60 @@ function sendSyncData() {
             ctx.fillStyle = "#030308"; ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.save(); ctx.scale(dpr * zoom, dpr * zoom); ctx.translate(-cam.x, -cam.y); 
             ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-            
             ctx.fillStyle = "white";
             stars.forEach(s => { let vX = s.x - cam.x; let vY = s.y - cam.y; if(vX > -20 && vX < (window.innerWidth/zoom) + 20 && vY > -20 && vY < (window.innerHeight/zoom) + 20) { s.alpha += (Math.random() - 0.5) * 0.1; if(s.alpha < 0) s.alpha = 0; if(s.alpha > 1) s.alpha = 1; ctx.globalAlpha = s.alpha; ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI*2); ctx.fill(); } });
-            ctx.globalAlpha = 1.0; 
+            ctx.globalAlpha = 1.0; frameCount++; if (frameCount % GAME_CONFIG.ai.tickFrames === 0) updateAllAI();
 
-            // ==========================================
-            // PHÂN NHÁNH QUYỀN LỰC: HOST VÀ GUEST
-            // ==========================================
-            if (!isOnline || myRole === 'host') {
-                // --- MÁY HOST CHẠY TOÀN BỘ LOGIC ---
-                frameCount++; 
-                if (frameCount % GAME_CONFIG.ai.tickFrames === 0) updateAllAI();
-
-                let attackableEntities = buildings.concat(units).concat(miners).concat(turrets).concat(reactors);
-                resolveCollisions(attackableEntities.concat(mines));
-                
-                mines = mines.filter(m => !m.markedForDeletion); 
-                if (mines.length < MAX_MINES && Math.random() < GAME_CONFIG.map.mineSpawnChance) { 
-                    let pos = getSafePos(3000, 3000, 0, 2700, buildings.concat(mines), 100);
-                    if(pos) mines.push(new GoldMine(pos.x, pos.y));
-                } 
-                
-                reactors.forEach(r => r.update()); 
-                miners.forEach(miner => miner.update(mines, buildings));
-                turrets.forEach(turret => turret.update(attackableEntities)); 
-                units.forEach(unit => unit.update(attackableEntities, buildings));
-                buildings.forEach(building => building.update(attackableEntities));
-
-                explosions = explosions.filter(ex => ex.timer > 0);
-                explosions.forEach(ex => ex.timer--);
-
-                // Dọn rác
-                buildings = buildings.filter(b => !b.markedForDeletion); 
-                units = units.filter(u => !u.markedForDeletion);
-                miners = miners.filter(m => !m.markedForDeletion); 
-                turrets = turrets.filter(t => !t.markedForDeletion); 
-                reactors = reactors.filter(r => !r.markedForDeletion);
-                ALL_TEAMS.forEach(team => { let hasB = buildings.some(b => b.team === team && b.type === 'Barracks'); if (!hasB) gameData[team].barracksLevel = 0; });
-
-                // GỬI DATA CHO GUEST (Khoảng 10 khung hình 1 lần)
-                if (isOnline && frameCount % 6 === 0) sendSyncData();
-
-                checkGameOverStatus(m, s);
-
-            } else {
-                // --- MÁY GUEST CHỈ LẤY DATA GHI ĐÈ LÊN MẢNG ---
-                if (serverGameState) {
-                    units = serverGameState.units.map(u => { let o = new CombatUnit(u.x, u.y, u.team, u.unitType); Object.assign(o, u); return o; });
-                    buildings = serverGameState.buildings.map(b => { let o = new Building(b.x, b.y, b.team, b.type); Object.assign(o, b); return o; });
-                    miners = serverGameState.miners.map(m => { let o = new Miner(m.x, m.y, m.team); Object.assign(o, m); return o; });
-                    turrets = serverGameState.turrets.map(t => { let o = new Turret(t.x, t.y, t.team); Object.assign(o, t); return o; });
-                    reactors = serverGameState.reactors.map(r => { let o = new Reactor(r.x, r.y, r.team); Object.assign(o, r); return o; });
-                    mines = serverGameState.mines.map(m => { let o = new GoldMine(m.x, m.y); o.capacity = m.capacity; o.radius = m.radius; return o; });
-                    explosions = serverGameState.explosions || [];
-                    
-                    // Đồng bộ Tiền Vàng hiển thị cho Guest
-                    ALL_TEAMS.forEach(team => {
-                        if(gameData[team] && serverGameState.goldSync[team]) {
-                            gameData[team].gold = serverGameState.goldSync[team].gold;
-                            gameData[team].barracksLevel = serverGameState.goldSync[team].barracksLevel;
-                        }
-                    });
-                }
-            }
-
-            // ==========================================
-            // CẢ HOST VÀ GUEST ĐỀU CHẠY HÀM VẼ (DRAW)
-            // ==========================================
+            let attackableEntities = buildings.concat(units).concat(miners).concat(turrets).concat(reactors);
+            resolveCollisions(attackableEntities.concat(mines));
+            mines = mines.filter(m => !m.markedForDeletion); 
+            if (mines.length < MAX_MINES && Math.random() < GAME_CONFIG.map.mineSpawnChance) { 
+                let pos = getSafePos(3000, 3000, 0, 2700, buildings.concat(mines), 100);
+                if(pos) mines.push(new GoldMine(pos.x, pos.y));
+            } 
             mines.forEach(mine => mine.draw(ctx));
-            reactors.forEach(r => r.draw(ctx)); 
-            miners.forEach(miner => miner.draw(ctx));
-            turrets.forEach(turret => turret.draw(ctx)); 
-            units.forEach(unit => unit.draw(ctx));
-            buildings.forEach(building => building.draw(ctx));
 
+            reactors.forEach(r => { r.update(); r.draw(ctx); }); miners.forEach(miner => { miner.update(mines, buildings); miner.draw(ctx); });
+            turrets.forEach(turret => { turret.update(attackableEntities); turret.draw(ctx); }); units.forEach(unit => { unit.update(attackableEntities, buildings); unit.draw(ctx); });
+            buildings.forEach(building => { building.update(attackableEntities); building.draw(ctx); });
+
+            explosions = explosions.filter(ex => ex.timer > 0);
             explosions.forEach(ex => {
+                ex.timer--;
                 if (imgBoom && imgBoom.complete) {
-                    let size = 90; ctx.drawImage(imgBoom, ex.x - size/2, ex.y - size/2, size, size);
+                    let size = 90; 
+                    ctx.drawImage(imgBoom, ex.x - size/2, ex.y - size/2, size, size);
                 }
             });
 
             if (placementMode === 'turret') { let pBase = getBase('player'); if (pBase) { ctx.beginPath(); ctx.arc(pBase.x, pBase.y, 450, 0, Math.PI * 2); ctx.fillStyle = "rgba(0, 255, 255, 0.03)"; ctx.fill(); ctx.strokeStyle = "rgba(0, 255, 255, 0.4)"; ctx.setLineDash([10, 10]); ctx.stroke(); ctx.setLineDash([]); } }
-            
             ctx.restore();
+
+            buildings = buildings.filter(b => !b.markedForDeletion); units = units.filter(u => !u.markedForDeletion);
+            miners = miners.filter(m => !m.markedForDeletion); turrets = turrets.filter(t => !t.markedForDeletion); reactors = reactors.filter(r => !r.markedForDeletion);
+            ALL_TEAMS.forEach(team => { let hasB = buildings.some(b => b.team === team && b.type === 'Barracks'); if (!hasB) gameData[team].barracksLevel = 0; });
             updateUI();
+
+            let pBase = getBase('player'); let botBases = buildings.filter(b => b.team !== 'player' && b.type === 'Base').length;
+            
+            if (!pBase && !gameOver) {
+                gameOver = true; document.getElementById('game-over').style.display = 'flex';
+                let destroyedBases = 7 - botBases;
+                let reward = destroyedBases * 100;
+                profile.darkMatter += reward;
+                
+                let text = document.getElementById('result-text'); 
+                let rewardMsg = reward > 0 ? `<br>Tiêu diệt ${destroyedBases} Thế lực: +${reward} LÕI` : "";
+                text.innerHTML = `HẠM ĐỘI BỊ TIÊU DIỆT!${rewardMsg}<br><span style="font-size:12px; color:#aaa;">(Thời gian: ${m}:${s} - Số dư: ${profile.darkMatter} Lõi)</span>`; 
+                text.style.color = "#ff4444"; 
+                saveProfile(); 
+            } else if (botBases === 0 && !gameOver && frameCount > 30) {
+                gameOver = true; document.getElementById('game-over').style.display = 'flex';
+                profile.darkMatter += 1050; 
+                let text = document.getElementById('result-text'); 
+                text.innerHTML = `BÁ CHỦ TINH HỆ TẦNG ${profile.sector}!<br><span style="font-size:12px; color:#aaa;">TERRAN đã quét sạch các thế lực thù địch.<br>Thời gian: ${m}:${s}<br>+1050 LÕI HẮC THẠCH</span>`; text.style.color = "#00ffff";
+                profile.sector += 1; saveProfile();
+            }
             animationId = requestAnimationFrame(gameLoop);
         }
 
