@@ -1,101 +1,1570 @@
 <!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>RTS v0.1.5</title>
-<style>
-    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #255; }
-    canvas { display: block; width: 100vw; height: 100vh; }
-</style>
-    </head>
-<body>
-
-    <div id="ui-layer" style="position: absolute; z-index: 10;">
-        <div id="screen-login">
-            <input type="text" id="username" placeholder="Tên của bạn">
-            <button onclick="handleCreate()">TẠO PHÒNG (HOST)</button>
-            <input type="text" id="joinCode" placeholder="MÃ PHÒNG">
-            <button onclick="handleJoin()">THAM GIA (GUEST)</button>
-        </div>
-        
-<div id="screen-waiting" class="screen" style="display: block;">
-    <div class="panel">
-        <h1 id="display-code" style="color: cyan;">----</h1>
-        <ul id="player-list"></ul>
-        <button id="btn-start" onclick="handleStart()" style="display:none;">BẮT ĐẦU TRÒ CHƠI</button>
-    </div>
-</div>
-    </div>
-
-    <canvas id="gameCanvas"></canvas>
+<!-- saved from url=(0043)http://fitary.mygamesonline.org/war_v1.html -->
+<html lang="vi"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Galactic RTS: Balance &amp; AI Tactics v5</title>
+<title>Galactic RTS: Balance & AI Tactics v5</title>
     <script src="/socket.io/socket.io.js"></script>
-    <script src="network.js"></script>
-    <script src="game.js"></script>
-<script>
-// Đảm bảo lắng nghe ở cấp độ root
-socket.on('gameStarted', () => {
-    console.log("SERVER ĐÃ RA LỆNH BẮT ĐẦU!");
-    
-    // Kiểm tra xem phần tử có tồn tại không trước khi đổi style
-    let waitingScreen = document.getElementById('screen-waiting');
-    let topBar = document.getElementById('top-bar');
-    
-    if (waitingScreen) waitingScreen.style.display = 'none';
-    if (topBar) topBar.style.display = 'flex';
-    
-    startRendering(); // Gọi từ game.js
-});
-
-    let currentRoomCode = '';
-
-    // Hàm gọi từ HTML
-    function handleCreate() {
-        const name = document.getElementById('username').value;
-        Network.createRoom(name);
-    }
-
-    function handleJoin() {
-        const name = document.getElementById('username').value;
-        const code = document.getElementById('joinCode').value;
-        Network.joinRoom(code, name);
-    }
-
-    function handleStart() {
-        Network.startGame(currentRoomCode);
-    }
-
-    // Lắng nghe từ network.js
-    Network.onInit((data) => {
-        document.getElementById('screen-login').style.display = 'none';
-        document.getElementById('screen-waiting').style.display = 'block';
+    <style>
+        /* KHÓA ZOOM TRÌNH DUYỆT TRÊN MOBILE */
+        body, html, * { touch-action: manipulation; box-sizing: border-box; }
+        body, html { margin: 0; padding: 0; background-color: #000; color: #fff; font-family: sans-serif; width: 100vw; height: 100vh; overflow: hidden; user-select: none; -webkit-user-select: none; }
+        canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
         
-        currentRoomCode = data.roomCode;
-        document.getElementById('display-code').innerText = "MÃ PHÒNG: " + data.roomCode;
+        #scoreboard { position: absolute; top: 0; left: 0; width: 100%; background: rgba(0,0,15,0.85); display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 3px 0; font-size: 9px; font-weight: bold; z-index: 10; border-bottom: 1px solid #333; pointer-events: none; align-items: center; }
+        .score-item { padding: 0 1px; }
 
-        if (data.role === 'host') {
-            document.getElementById('btn-start').style.display = 'block';
+        #map-controls { position: absolute; right: 8px; top: 40px; display: flex; flex-direction: column; gap: 6px; z-index: 10; }
+        .btn-zoom { width: 30px; height: 30px; background: rgba(0,255,255,0.1); border: 1px solid #00ffff; color: #00ffff; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 4px; display: flex; justify-content: center; align-items: center; }
+        .btn-zoom:active { background: rgba(0,255,255,0.4); }
+
+        /* IN-GAME BOTTOM UI */
+        #ui-container { position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,15,0.95); display: flex; flex-direction: column; z-index: 10; border-top: 1px solid #00ffff; }
+        
+        #main-tabs { display: flex; border-bottom: 1px solid #333; width: 100%; }
+        .tab-btn { flex: 1; padding: 6px 0; background: rgba(0,0,0,0.5); color: #888; border: none; border-right: 1px solid #333; font-size: 9px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+        .tab-btn.active { background: rgba(0, 255, 255, 0.15); color: #00ffff; border-bottom: 2px solid #00ffff; }
+
+        .tab-content { display: none; width: 100%; padding: 4px; }
+        .tab-content.active { display: block; }
+
+        .ui-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 100%; margin: 0; }
+        .grid-4x2 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; width: 100%; margin-bottom: 2px; }
+        
+        .btn { width: 100%; padding: 6px 2px; background: rgba(0, 255, 255, 0.05); color: #00ffff; border: 1px solid #00ffff; cursor: pointer; font-weight: bold; font-size: 8.5px; border-radius: 4px; text-transform: uppercase; text-align: center; transition: 0.1s; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; }
+        .btn:active { background: rgba(0, 255, 255, 0.3); transform: scale(0.95); }
+        .btn:disabled { background: transparent !important; color: #444 !important; border-color: #333 !important; cursor: not-allowed; transform: none; }
+        
+        .stat-text { font-size: 7px; color: #aaa; font-weight: normal; letter-spacing: 0.2px; line-height: 1.2; text-align: center; }
+        .btn-cmd-atk { font-size: 8.5px !important; padding: 8px 2px !important; margin: 0; height: 100%; }
+
+        #upgrade-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(10, 10, 20, 0.98); border: 2px solid #00ffff; border-radius: 6px; padding: 12px; z-index: 100; display: none; flex-direction: column; width: 85%; max-width: 300px; box-shadow: 0 0 25px rgba(0, 255, 255, 0.2); }
+        #upgrade-modal h2 { margin: 0 0 8px 0; font-size: 13px; text-align: center; color: #00ffff; text-transform: uppercase; }
+        select { width: 100%; padding: 5px; background: #111; color: #00ffff; border: 1px solid #00ffff; margin-bottom: 8px; font-weight: bold; font-size: 11px; outline: none; }
+        .stat-row { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 5px; border-bottom: 1px dashed #444; padding-bottom: 3px; }
+        .stat-val { color: #ffd700; font-weight: bold; }
+        .upg-btn-group { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+        .btn-upgrade { background: rgba(255, 215, 0, 0.1); color: #ffd700; border-color: #ffd700; padding: 6px; font-size: 10px; }
+
+        #game-over { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 200; }
+        #game-over h1 { font-size: 20px; margin-bottom: 15px; letter-spacing: 1px; text-align: center; line-height: 1.4; }
+        ::-webkit-scrollbar { display: none; }
+
+        #toast-msg { position: absolute; top: 45px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); border: 1px solid #00ffff; color: #00ffff; padding: 6px 12px; font-size: 9px; border-radius: 12px; font-weight: bold; display: none; z-index: 300; pointer-events: none; text-align: center; white-space: nowrap; }
+
+        /* COMMAND ROOM UI */
+        #command-room { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: #050510; background-image: radial-gradient(circle at center, #112 0%, #000 100%); z-index: 1000; display: flex; flex-direction: column; align-items: center; padding: 12px; overflow-y: auto; touch-action: pan-y; }
+        #command-room h1 { color: #00ffff; text-shadow: 0 0 10px #00ffff; text-align: center; font-size: 16px; margin-bottom: 4px; text-transform: uppercase; }
+        .cr-stats { color: #ffd700; font-size: 11px; margin-bottom: 12px; font-weight: bold; text-align: center; border-bottom: 1px dashed #ffd700; padding-bottom: 6px; width: 100%; max-width: 400px; }
+        .cr-guide { width: 100%; max-width: 400px; margin: 0 0 10px; padding: 8px 10px; border: 1px solid rgba(0,255,255,0.35); background: rgba(0,255,255,0.06); color: #c9ffff; font-size: 10px; line-height: 1.45; border-radius: 4px; }
+        .cr-guide b { color: #fff; }
+        .cr-tabs { display: flex; gap: 6px; width: 100%; max-width: 400px; margin-bottom: 8px; }
+        .cr-tabs button { flex: 1; padding: 6px; font-size: 9px; background: rgba(0,255,255,0.05); border: 1px solid #00ffff; color: #00ffff; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s;}
+        .cr-tabs button.active { background: #00ffff; color: #000; box-shadow: 0 0 8px #00ffff; }
+        
+        .cr-content { width: 100%; max-width: 400px; display: none; flex-direction: column; gap: 4px; padding-bottom: 140px; }
+        .cr-content.active { display: flex; }
+        
+        .cr-upg-item { background: rgba(255,255,255,0.05); border: 1px solid #444; padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; gap: 8px;}
+        .cr-upg-item div { flex: 1; display: flex; flex-direction: column; gap: 1px;}
+        .cr-upg-item div b { color: #fff; font-size: 9px; }
+        .cr-upg-item div span { font-size: 8px; color: #aaa; }
+        .cr-upg-item button { flex-shrink: 0; width: 75px !important; max-width: 75px; padding: 6px 0 !important; font-size: 9.5px !important; text-align: center; margin: 0;}
+        .gallery-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+        .gallery-item { border: 1px solid #333; background: rgba(255,255,255,0.04); border-radius: 4px; padding: 8px; min-height: 58px; }
+        .gallery-item.unlocked { border-color: rgba(255,215,0,0.55); background: rgba(255,215,0,0.08); }
+        .gallery-item b { display: block; font-size: 10px; color: #fff; margin-bottom: 4px; }
+        .gallery-item span { display: block; font-size: 8px; color: #aaa; line-height: 1.35; }
+        
+        .cr-actions { position: fixed; bottom: 0; left: 0; width: 100%; background: #050510; padding: 8px 12px; display: flex; gap: 8px; justify-content: center; box-sizing: border-box; border-top: 1px solid #333; z-index: 1001; }
+        .cr-actions button { width: 100%; max-width: 140px; padding: 8px; font-size: 11px; }
+    </style>
+</head>
+<body>
+<!-- GIAO DIỆN LOBBY MULTIPLAYER -->
+    <div id="mp-lobby" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(10, 10, 15, 0.98); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif;">
+        <div style="width: 300px; background: #111; border: 1px solid #444; padding: 20px; border-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+            <h2 style="text-align: center; color: #aaa; font-size: 14px; margin-top: 0; text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 10px;">KẾT NỐI MÁY CHỦ</h2>
+            
+            <div id="lobby-menu">
+                <input type="text" id="playerName" placeholder="Nhập tên chỉ huy" style="width: 100%; padding: 8px; margin-bottom: 10px; background: #000; border: 1px solid #555; color: #fff; font-size: 11px; outline: none; box-sizing: border-box;">
+                <button class="btn" onclick="hostRoom()" style="width: 100%; margin-bottom: 8px; background: rgba(255,255,255,0.05); color: #ccc; border-color: #555;">TẠO PHÒNG (HOST)</button>
+                
+                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                    <input type="text" id="roomCodeInput" placeholder="Mã phòng" style="flex: 1; padding: 8px; background: #000; border: 1px solid #555; color: #fff; font-size: 11px; text-transform: uppercase; outline: none; box-sizing: border-box;">
+                    <button class="btn" onclick="joinRoom()" style="background: rgba(255,255,255,0.05); color: #ccc; border-color: #555;">THAM GIA</button>
+                </div>
+                
+                <button class="btn" onclick="playOffline()" style="width: 100%; border-color: #00ffff; color: #00ffff; background: rgba(0,255,255,0.05);">CHƠI OFFLINE</button>
+            </div>
+
+            <div id="lobby-room" style="display: none;">
+                <p style="text-align: center; color: #aaa; font-size: 11px; margin-bottom: 5px;">MÃ PHÒNG CỦA BẠN:</p>
+                <h1 id="lbl-roomCode" style="text-align: center; color: #00ffff; font-size: 24px; letter-spacing: 2px; margin: 0 0 15px 0;">---</h1>
+                <div id="player-list" style="background: #050505; border: 1px solid #333; min-height: 100px; padding: 10px; margin-bottom: 15px; font-size: 11px; color: #ccc; max-height: 150px; overflow-y: auto;">
+                    <!-- Danh sách người chơi -->
+                </div>
+                <button id="btn-start-mp" class="btn" onclick="startMultiplayer()" style="width: 100%; display: none; background: rgba(0,255,255,0.1); border-color: #00ffff; color: #00ffff;">BẮT ĐẦU CHIẾN DỊCH</button>
+                <p id="wait-msg" style="text-align: center; color: #888; font-size: 10px; display: none;">Đang đợi Host bắt đầu...</p>
+            </div>
+        </div>
+    </div>
+
+
+
+
+    <div id="command-room">
+        <h1>PHÒNG ĐIỀU HÀNH TỐI CAO</h1>
+        <div class="cr-stats">
+            Tinh Hệ Tầng: <span id="cr-sector" style="color:#00ffff; font-size:14px;">1</span> | 
+            Hắc Thạch: <span id="cr-dm" style="color:#cc33ff; font-size:14px;">0</span>
+        </div>
+        <div class="cr-guide">
+            <b>Mục tiêu:</b> khai thác vàng, mở Hạm Đội, nâng cấp công nghệ rồi quét sạch 7 thế lực địch. Kéo bản đồ để quan sát, chạm nhanh để đặt trụ hoặc điểm tập kết.
+        </div>
+        <div class="cr-tabs">
+            <button id="tab-btn-upg" class="active" onclick="switchCRTab(&#39;cr-upgrades&#39;, this)">NÂNG CẤP VĨNH VIỄN</button>
+            <button id="tab-btn-gal" onclick="switchCRTab(&#39;cr-gallery&#39;, this)">BỘ SƯU TẬP TƯỚNG</button>
+        </div>
+        <div id="cr-upgrades" class="cr-content active"><div class="cr-upg-item"><div><b>Gia Cố Lõi HQ</b><span>Cấp: 0 (+0%)</span></div><button class="btn" onclick="buyMetaUpgrade(&#39;hq_hp&#39;, 30)" disabled="" style="background:transparent; color:#555; border-color:#333;">30 Lõi</button></div><div class="cr-upg-item"><div><b>Nòng Plasma (Tháp ATK)</b><span>Cấp: 0 (+0%)</span></div><button class="btn" onclick="buyMetaUpgrade(&#39;turret_atk&#39;, 40)" disabled="" style="background:transparent; color:#555; border-color:#333;">40 Lõi</button></div><div class="cr-upg-item"><div><b>Động Cơ Khai Thác (Mỏ SPD)</b><span>Cấp: 0 (+0%)</span></div><button class="btn" onclick="buyMetaUpgrade(&#39;miner_spd&#39;, 30)" disabled="" style="background:transparent; color:#555; border-color:#333;">30 Lõi</button></div><div class="cr-upg-item"><div><b>Đạn Xuyên Giáp (Tiêm Kích ATK)</b><span>Cấp: 0 (+0%)</span></div><button class="btn" onclick="buyMetaUpgrade(&#39;interceptor_atk&#39;, 30)" disabled="" style="background:transparent; color:#555; border-color:#333;">30 Lõi</button></div><div class="cr-upg-item"><div><b>Vỏ Hợp Kim Titan (Tuần Tra HP)</b><span>Cấp: 0 (+0%)</span></div><button class="btn" onclick="buyMetaUpgrade(&#39;corvette_hp&#39;, 40)" disabled="" style="background:transparent; color:#555; border-color:#333;">40 Lõi</button></div><div class="cr-upg-item"><div><b>Tia Phục Hồi X2 (Tàu Hỗ Trợ)</b><span>Cấp: 0 (+0%)</span></div><button class="btn" onclick="buyMetaUpgrade(&#39;repairer_atk&#39;, 50)" disabled="" style="background:transparent; color:#555; border-color:#333;">50 Lõi</button></div><div class="cr-upg-item"><div><b>Pháo Điện Từ (Pháo Kích ATK)</b><span>Cấp: 0 (+0%)</span></div><button class="btn" onclick="buyMetaUpgrade(&#39;railgun_atk&#39;, 60)" disabled="" style="background:transparent; color:#555; border-color:#333;">60 Lõi</button></div><div class="cr-upg-item"><div><b>Giáp Hấp Thụ (Tàu C3 HP)</b><span>Cấp: 0 (+0%)</span></div><button class="btn" onclick="buyMetaUpgrade(&#39;dreadnought_hp&#39;, 100)" disabled="" style="background:transparent; color:#555; border-color:#333;">100 Lõi</button></div><div class="cr-upg-item"><div><b>Lõi Phản Vật Chất (Tàu C3 SPD)</b><span>Cấp: 0 (+0%)</span></div><button class="btn" onclick="buyMetaUpgrade(&#39;dreadnought_spd&#39;, 150)" disabled="" style="background:transparent; color:#555; border-color:#333;">150 Lõi</button></div></div>
+        <div id="cr-gallery" class="cr-content"><div class="gallery-grid"><div class="gallery-item "><b>???</b><span>Phá hủy HQ thế lực này để mở khóa hồ sơ.</span></div><div class="gallery-item "><b>???</b><span>Phá hủy HQ thế lực này để mở khóa hồ sơ.</span></div><div class="gallery-item "><b>???</b><span>Phá hủy HQ thế lực này để mở khóa hồ sơ.</span></div><div class="gallery-item "><b>???</b><span>Phá hủy HQ thế lực này để mở khóa hồ sơ.</span></div><div class="gallery-item "><b>???</b><span>Phá hủy HQ thế lực này để mở khóa hồ sơ.</span></div><div class="gallery-item "><b>???</b><span>Phá hủy HQ thế lực này để mở khóa hồ sơ.</span></div><div class="gallery-item "><b>???</b><span>Phá hủy HQ thế lực này để mở khóa hồ sơ.</span></div></div></div>
+        <div class="cr-actions">
+            <button class="btn" style="color:#ff4444; border-color:#ff4444;" onclick="resetProfile()">XÓA DỮ LIỆU</button>
+            <button class="btn" style="background:rgba(0,255,255,0.2); border-color:#00ffff; font-weight:bold; color:#00ffff;" onclick="startGame()">XUẤT KÍCH</button>
+        </div>
+    </div>
+
+    <div id="scoreboard">
+        <div class="score-item" style="color:#aaa; border-right: 1px solid #444; padding-right: 4px; margin-right: 2px;">TIME: <span id="match-timer">00:00</span></div>
+        <div class="score-item" style="color:#00ffff">TERRAN: <span id="gold-player">100</span>v</div>
+        <div class="score-item" style="color:#ff3333">TITAN: <span id="gold-bot1">100</span>v</div>
+        <div class="score-item" style="color:#33ff33">SWIFT: <span id="gold-bot2">100</span>v</div>
+        <div class="score-item" style="color:#cc33ff">PSIONIC: <span id="gold-bot3">100</span>v</div>
+        <div class="score-item" style="color:#ffcc00">NOVA: <span id="gold-bot4">100</span>v</div>
+        <div class="score-item" style="color:#ff6600">ABYSS: <span id="gold-bot5">100</span>v</div>
+        <div class="score-item" style="color:#ff00ff">GALAXY: <span id="gold-bot6">100</span>v</div>
+        <div class="score-item" style="color:#ffffff">NEBULA: <span id="gold-bot7">100</span>v</div>
+    </div>
+
+    <div id="map-controls">
+        <button class="btn-zoom" onclick="changeZoom(0.1)">+</button>
+        <button class="btn-zoom" onclick="changeZoom(-0.1)">-</button>
+    </div>
+
+    <div id="toast-msg">THÔNG BÁO</div>
+    <canvas id="gameCanvas" width="1920" height="878" style="width: 1536px; height: 703px;"></canvas>
+
+    <div id="game-over">
+        <h1 id="result-text"></h1>
+        <button class="btn" style="max-width: 160px; padding: 8px;" onclick="location.reload()">PHÒNG ĐIỀU HÀNH</button>
+    </div>
+
+    <div id="upgrade-modal">
+        <h2>VIỆN NGHIÊN CỨU</h2>
+        <select id="upg-target" onchange="renderTechStats()">
+            <option value="hq">Trạm Chỉ Huy (HQ)</option>
+            <option value="interceptor">Tàu Tiêm Kích</option>
+            <option value="corvette">Tàu Tuần Tra</option>
+            <option value="repairer">Tàu Hỗ Trợ</option>
+            <option value="railgun">Tàu Pháo Kích</option>
+            <option value="spc">Tàu Tối Thượng (C3)</option>
+        </select>
+        <div class="stat-row"><span>Máu (HP):</span> <span class="stat-val" id="stat-hp">0</span></div>
+        <div class="stat-row" id="row-atk"><span>Sát Thương (ATK):</span> <span class="stat-val" id="stat-atk">0</span></div>
+        <div class="stat-row" id="row-spd"><span>Tốc Độ (SPD):</span> <span class="stat-val" id="stat-spd">0</span></div>
+        <div class="upg-btn-group">
+            <button class="btn btn-upgrade" id="btn-up-hp" onclick="buyUpgrade(&#39;hp&#39;)">+10% HP (150v)</button>
+            <button class="btn btn-upgrade" id="btn-up-atk" onclick="buyUpgrade(&#39;atk&#39;)">+10% ATK (150v)</button>
+            <button class="btn btn-upgrade" id="btn-up-spd" onclick="buyUpgrade(&#39;spd&#39;)">+10% TỐC ĐỘ (150v)</button>
+            <button class="btn" style="margin-top: 2px; border-color: #ff4444; color: #ff4444;" onclick="closeUpgradeModal()">ĐÓNG</button>
+        </div>
+    </div>
+
+    <div id="ui-container">
+        <div id="main-tabs">
+            <button class="tab-btn active" onclick="switchTab(&#39;tab-build&#39;, this)">XÂY DỰNG</button>
+            <button class="tab-btn" onclick="switchTab(&#39;tab-fleet&#39;, this)">HẠM ĐỘI</button>
+            <button class="tab-btn" onclick="switchTab(&#39;tab-cmd&#39;, this)">CHỈ HUY</button>
+            <button class="tab-btn" style="color:#ffd700;" onclick="openUpgradeModal()">CÔNG NGHỆ</button>
+        </div>
+
+        <div id="tab-build" class="tab-content active">
+            <div class="ui-grid-3">
+                <button class="btn" id="btn-miner" onclick="playerTrainMiner()">Xe Mỏ (50v)<br><span class="stat-text">HP:800 | SPD:0.6<br>⏱ 8s</span></button>
+                <button class="btn" id="btn-build" onclick="playerBuildOrUpgBarracks()">Hạm Đội (50v)<br><span class="stat-text">Mua/Up Nhà Lính</span></button>
+                <button class="btn" id="btn-turret" onclick="playerToggleTurretPlacement()">Tháp Pháo (100v)<br><span class="stat-text" id="lbl-turret">0/5 Trụ</span></button>
+                <button class="btn" id="btn-reactor" onclick="playerBuildReactor()">Lõi Điện (60v)<br><span class="stat-text" id="reactor-count">0/3 | +1v/s</span></button>
+                <button class="btn" id="btn-upg-turret" onclick="playerUpgTurretInGame()">Công Trụ (100v)<br><span class="stat-text" id="lbl-upg-turret">Lv:0/5 | +1ATK</span></button>
+                <button class="btn" id="btn-upg-turret-hp" onclick="playerUpgTurretHpInGame()">Máu Trụ (100v)<br><span class="stat-text" id="lbl-upg-turret-hp">Lv:0/5 | +10%HP</span></button>
+            </div>
+        </div>
+
+        <div id="tab-fleet" class="tab-content">
+            <div class="ui-grid-3">
+                <button class="btn" id="btn-tr-int" onclick="playerTrainUnit(&#39;interceptor&#39;)"><span id="name-int">Tiêm Kích (20v)</span><br><span class="stat-text" id="lbl-int">...</span></button>
+                <button class="btn" id="btn-tr-cor" onclick="playerTrainUnit(&#39;corvette&#39;)"><span id="name-cor">Tuần Tra (40v)</span><br><span class="stat-text" id="lbl-cor">...</span></button>
+                <button class="btn" id="btn-tr-rep" onclick="playerTrainUnit(&#39;repairer&#39;)"><span id="name-rep">Hỗ Trợ (60v)</span><br><span class="stat-text" id="lbl-rep">...</span></button>
+                <button class="btn" id="btn-tr-rai" onclick="playerTrainUnit(&#39;railgun&#39;)"><span id="name-rai">Pháo Kích (80v)</span><br><span class="stat-text" id="lbl-rai">...</span></button>
+                <button class="btn" id="btn-tr-spc" onclick="playerTrainSpecial()" style="border-color:#ffcc00; color:#ffcc00; background:rgba(255,204,0,0.1);"><span id="name-spc">TÀU CẤP 3</span><br><span class="stat-text" id="lbl-spc" style="color:#ffcc00;">...</span></button>
+                <button class="btn" id="btn-tr-bre" onclick="playerTrainUnit(&#39;base_repairer&#39;)"><span id="name-bre">Drone Bảo Trì (50v)</span><br><span class="stat-text">Sửa: 2HP/0.2s</span></button>
+            </div>
+        </div>
+
+        <div id="tab-cmd" class="tab-content">
+            <div class="grid-4x2">
+                <button class="btn btn-cmd-atk" onclick="playerCommandAttack(&#39;bot1&#39;)" style="color: #ff3333; border-color: #ff3333;">ĐÁNH TITAN</button>
+                <button class="btn btn-cmd-atk" onclick="playerCommandAttack(&#39;bot2&#39;)" style="color: #33ff33; border-color: #33ff33;">ĐÁNH SWIFT</button>
+                <button class="btn btn-cmd-atk" onclick="playerCommandAttack(&#39;bot3&#39;)" style="color: #cc33ff; border-color: #cc33ff;">ĐÁNH PSIONIC</button>
+                <button class="btn btn-cmd-atk" onclick="playerCommandAttack(&#39;bot4&#39;)" style="color: #ffcc00; border-color: #ffcc00;">ĐÁNH NOVA</button>
+                <button class="btn btn-cmd-atk" onclick="playerCommandAttack(&#39;bot5&#39;)" style="color: #ff6600; border-color: #ff6600;">ĐÁNH ABYSS</button>
+                <button class="btn btn-cmd-atk" onclick="playerCommandAttack(&#39;bot6&#39;)" style="color: #ff00ff; border-color: #ff00ff;">ĐÁNH GALAXY</button>
+                <button class="btn btn-cmd-atk" onclick="playerCommandAttack(&#39;bot7&#39;)" style="color: #ffffff; border-color: #ffffff;">ĐÁNH NEBULA</button>
+                <button class="btn btn-cmd-atk" onclick="playerCommandAttack(&#39;IDLE&#39;)" style="color: #00ffff; border-color: #00ffff; background: rgba(0,255,255,0.1);">VỀ THỦ</button>
+            </div>
+            <button class="btn" id="btn-move-cmd" onclick="playerToggleMovePlacement()" style="width: 100%; padding: 8px 0; color: #00ffff; border-color: #00ffff; background: rgba(0,255,255,0.05); font-size: 9px; margin-top: 4px;">📍 ĐIỂM TẬP KẾT HẠM ĐỘI</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('dblclick', function(event) { event.preventDefault(); }, { passive: false });
+
+let matchStartTime = 0;
+        let explosions = [];
+
+        // ======== THÊM CỤM BIẾN MẠNG NÀY VÀO ========
+        const socket = typeof io !== 'undefined' ? io() : null;
+        let isOnline = false;     // Đánh dấu game đang chơi chế độ Online
+        let myRole = 'host';      // Mặc định là 'host' (Nếu chơi offline thì coi như host)
+        let myRoomCode = '';      // Mã phòng hiện tại
+        let myTeamId = 'player';  // Phe của bản thân trên máy này
+        let humanTeams = [];      // Danh sách các phe có người thật điều khiển (để chặn AI phe đó)
+        let serverGameState = null; // Dữ liệu Guest nhận từ Host để vẽ
+        // ============================================
+// ======== LOGIC LOBBY & SOCKET LẮNG NGHE ========
+        function hostRoom() {
+            if(!socket) return showToast("Không thể kết nối Server!", "#ff4444");
+            let name = document.getElementById('playerName').value || 'Host';
+            socket.emit('createRoom', name);
+        }
+
+        function joinRoom() {
+            if(!socket) return showToast("Không thể kết nối Server!", "#ff4444");
+            let code = document.getElementById('roomCodeInput').value.toUpperCase();
+            let name = document.getElementById('playerName').value || 'Guest';
+            if(code.length === 6) socket.emit('joinRoom', { code: code, username: name });
+            else showToast("Mã phòng phải có 6 ký tự!", "#ff4444");
+        }
+
+        function playOffline() {
+            document.getElementById('mp-lobby').style.display = 'none';
+            isOnline = false;
+        }
+
+        if (socket) {
+            socket.on('init', (data) => {
+                isOnline = true;
+                myRole = data.role;
+                myTeamId = data.team;
+                myRoomCode = data.roomCode;
+                
+                document.getElementById('lobby-menu').style.display = 'none';
+                document.getElementById('lobby-room').style.display = 'block';
+                document.getElementById('lbl-roomCode').innerText = myRoomCode;
+                
+                if(myRole === 'host') document.getElementById('btn-start-mp').style.display = 'block';
+                else document.getElementById('wait-msg').style.display = 'block';
+                
+                updatePlayerList(data.players);
+            });
+
+            socket.on('roomUpdated', (players) => {
+                updatePlayerList(players);
+            });
+
+            socket.on('systemMsg', (msg) => {
+                showToast(msg, "#ffd700");
+            });
+
+            socket.on('gameStarted', (humanPlayerTeams) => {
+                humanTeams = humanPlayerTeams;
+                document.getElementById('mp-lobby').style.display = 'none';
+                document.getElementById('command-room').style.display = 'none'; // Tắt cả Phòng Điều Hành cũ
+                startGame(); // Gọi hàm khởi tạo game gốc của bạn
+            });
+
+            socket.on('hostDisconnected', () => {
+                alert("Host đã ngắt kết nối! Phòng bị hủy.");
+                location.reload();
+            });
+        }
+
+        function updatePlayerList(players) {
+            let html = '';
+            players.forEach(p => {
+                let roleTag = p.team === 'player' ? '<span style="color:#00ffff">[HOST]</span>' : '<span style="color:#aaa">[GUEST]</span>';
+                html += `<div style="padding: 4px 0; border-bottom: 1px dashed #222;">${roleTag} ${p.name} <span style="font-size:9px; color:#666;">(Phe: ${p.team})</span></div>`;
+            });
+            document.getElementById('player-list').innerHTML = html;
+        }
+
+        function startMultiplayer() {
+            if(myRole === 'host') socket.emit('startGame', myRoomCode);
+        }
+        // ================================================
+
+
+        const defaultProfile = {
+            darkMatter: 0, sector: 1, capturedGenerals: [],
+            upgrades: {
+                hq_hp: 0, turret_atk: 0, miner_spd: 0, interceptor_atk: 0,
+                corvette_hp: 0, repairer_atk: 0, railgun_atk: 0, dreadnought_hp: 0, dreadnought_spd: 0
+            }
+        };
+        function cloneDefaultProfile() { return JSON.parse(JSON.stringify(defaultProfile)); }
+        function normalizeProfile(rawProfile) {
+            let clean = cloneDefaultProfile();
+            if (!rawProfile || typeof rawProfile !== 'object') return clean;
+            clean.darkMatter = Number.isFinite(rawProfile.darkMatter) ? rawProfile.darkMatter : clean.darkMatter;
+            clean.sector = Number.isFinite(rawProfile.sector) && rawProfile.sector > 0 ? rawProfile.sector : clean.sector;
+            clean.capturedGenerals = Array.isArray(rawProfile.capturedGenerals) ? rawProfile.capturedGenerals : [];
+            clean.upgrades = Object.assign(clean.upgrades, rawProfile.upgrades || {});
+            return clean;
+        }
+        function loadProfile() {
+            try { return normalizeProfile(JSON.parse(localStorage.getItem('galacticRTS_profile'))); }
+            catch (err) { return cloneDefaultProfile(); }
+        }
+        let profile = loadProfile();
+        function saveProfile() {
+            try { localStorage.setItem('galacticRTS_profile', JSON.stringify(profile)); }
+            catch (err) { showToast("Không thể lưu dữ liệu trình duyệt", "#ff4444"); }
+        }
+        function resetProfile() { if(confirm("Xóa toàn bộ dữ liệu Tinh Hệ và Nâng Cấp Vĩnh Viễn?")) { localStorage.removeItem('galacticRTS_profile'); location.reload(); } }
+
+        const generalProfiles = {
+            bot1: { name: 'TITAN', desc: 'Thiên về đội hình trâu máu và ép giao tranh trực diện.' },
+            bot2: { name: 'SWIFT', desc: 'Ưa tốc độ, mở rộng nhanh và đánh sớm.' },
+            bot3: { name: 'PSIONIC', desc: 'Tận dụng nâng cấp để kéo dài giao tranh.' },
+            bot4: { name: 'NOVA', desc: 'Dồn tài nguyên cho đợt công kích lớn.' },
+            bot5: { name: 'ABYSS', desc: 'Phòng thủ sâu, phản công khi đủ hạm đội.' },
+            bot6: { name: 'GALAXY', desc: 'Chiến thuật linh hoạt, đổi mục tiêu liên tục.' },
+            bot7: { name: 'NEBULA', desc: 'Thích kéo trận về cuối và dùng tàu cấp cao.' }
+        };
+
+        function switchCRTab(tabId, btn) {
+            document.querySelectorAll('#command-room .cr-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('#command-room .cr-tabs button').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active'); btn.classList.add('active');
+        }
+
+        function renderCommandRoom() {
+            document.getElementById('cr-sector').innerText = profile.sector; document.getElementById('cr-dm').innerText = profile.darkMatter;
+            let html = '';
+            GAME_CONFIG.permanentUpgrades.forEach(u => {
+                let currentLv = profile.upgrades[u.key] || 0; let cost = u.baseCost * (currentLv + 1);
+                let btnState = profile.darkMatter < cost ? 'disabled style="background:transparent; color:#555; border-color:#333;"' : 'style="border-color:#cc33ff; color:#cc33ff;"';
+                html += `<div class="cr-upg-item"><div><b>${u.name}</b><span>Cấp: ${currentLv} (+${currentLv*5}%)</span></div><button class="btn" onclick="buyMetaUpgrade('${u.key}', ${cost})" ${btnState}>${cost} Lõi</button></div>`;
+            });
+            document.getElementById('cr-upgrades').innerHTML = html;
+            renderGallery();
+        }
+
+        function renderGallery() {
+            let html = '<div class="gallery-grid">';
+            Object.entries(generalProfiles).forEach(([team, data]) => {
+                let unlocked = profile.capturedGenerals.includes(team);
+                html += `<div class="gallery-item ${unlocked ? 'unlocked' : ''}"><b>${unlocked ? data.name : '???'}</b><span>${unlocked ? data.desc : 'Phá hủy HQ thế lực này để mở khóa hồ sơ.'}</span></div>`;
+            });
+            html += '</div>';
+            document.getElementById('cr-gallery').innerHTML = html;
+        }
+
+        function unlockGeneral(team) {
+            if (!generalProfiles[team] || profile.capturedGenerals.includes(team)) return;
+            profile.capturedGenerals.push(team);
+            saveProfile();
+        }
+
+        function buyMetaUpgrade(key, cost) { if(profile.darkMatter >= cost) { profile.darkMatter -= cost; profile.upgrades[key] = (profile.upgrades[key] || 0) + 1; saveProfile(); renderCommandRoom(); } }
+        function showToast(msg, color="#00ffff") { let t = document.getElementById('toast-msg'); t.innerText = msg; t.style.color = color; t.style.borderColor = color; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000); }
+
+        let gameStarted = false;
+        let animationId = null;
+        function startGame() {
+            if (gameStarted) return;
+            document.getElementById('command-room').style.display = 'none';
+            initGame();
+            updateLiveButtonStats();
+            gameStarted = true;
+            if (assetLoadState.failed > 0 && !assetLoadState.warned) {
+                assetLoadState.warned = true;
+                showToast("Một số ảnh không tải được, dùng đồ họa dự phòng", "#ffd700");
+            }
+            gameLoop();
+        }
+
+        const GAME_CONFIG = {
+            permanentUpgrades: [
+                { key: 'hq_hp', name: 'Gia Cố Lõi HQ', baseCost: 30 },
+                { key: 'turret_atk', name: 'Nòng Plasma (Tháp ATK)', baseCost: 40 },
+                { key: 'miner_spd', name: 'Động Cơ Khai Thác (Mỏ SPD)', baseCost: 30 },
+                { key: 'interceptor_atk', name: 'Đạn Xuyên Giáp (Tiêm Kích ATK)', baseCost: 30 },
+                { key: 'corvette_hp', name: 'Vỏ Hợp Kim Titan (Tuần Tra HP)', baseCost: 40 },
+                { key: 'repairer_atk', name: 'Tia Phục Hồi X2 (Tàu Hỗ Trợ)', baseCost: 50 },
+                { key: 'railgun_atk', name: 'Pháo Điện Từ (Pháo Kích ATK)', baseCost: 60 },
+                { key: 'dreadnought_hp', name: 'Giáp Hấp Thụ (Tàu C3 HP)', baseCost: 100 },
+                { key: 'dreadnought_spd', name: 'Lõi Phản Vật Chất (Tàu C3 SPD)', baseCost: 150 }
+            ],
+            map: {
+                width: 6000,
+                height: 6000,
+                maxMines: 40,
+                edgePadding: 80,
+                starDensityDivisor: 6000,
+                mineSpawnChance: 0.05
+            },
+            economy: {
+                startGold: 100,
+                minerCost: 50,
+                turretCost: 100,
+                reactorCost: 60,
+                barracksCost: 50,
+                barracksUpgradeCosts: { 1: 120, 2: 250 },
+                techUpgradeCost: 150,
+                reactorGoldPerTick: 1,
+                reactorTickFrames: 60,
+                playerTurretLimit: 5,
+                playerReactorLimit: 5,
+                droneLimit: 5
+            },
+            scaling: {
+                inGameUpgradeStep: 0.10,
+                playerMetaStep: 0.05,
+                sectorEnemyStep: 0.05,
+                turretHpUpgradeStep: 0.10,
+                turretAtkFlatStep: 1
+            },
+            units: {
+                interceptor: { hp: 200, atk: 18, spd: 1.0, range: 100, aggro: 350, cost: 20, mpCost: 15, cd: 40, radius: 8, buildTime: 600 },
+                corvette: { hp: 400, atk: 25, spd: 0.6, range: 150, aggro: 300, cost: 40, mpCost: 20, cd: 60, radius: 10, buildTime: 900 },
+                repairer: { hp: 300, atk: 40, spd: 0.5, range: 180, aggro: 250, cost: 60, mpCost: 30, cd: 60, radius: 11, buildTime: 1200 },
+                railgun: { hp: 600, atk: 80, spd: 0.4, range: 300, aggro: 350, cost: 80, mpCost: 50, cd: 150, radius: 12, buildTime: 1500 },
+                base_repairer: { hp: 80, atk: 2, spd: 0.8, range: 120, aggro: 450, cost: 50, mpCost: 0, cd: 12, radius: 4, buildTime: 480 },
+                carrier: { hp: 4000, atk: 0, spd: 0.25, range: 300, aggro: 400, cost: 250, mpCost: 150, cd: 60, radius: 70, buildTime: 3600 },
+                leviathan: { hp: 3000, atk: 120, spd: 0.35, range: 250, aggro: 350, cost: 250, mpCost: 60, cd: 120, radius: 70, buildTime: 3600 },
+                driller: { hp: 2500, atk: 12, spd: 0.4, range: 200, aggro: 300, cost: 250, mpCost: 0, cd: 15, radius: 70, buildTime: 3600 }
+            },
+            buildings: {
+                hq: { hp: 12000, atk: 40, spd: 0, range: 250, cd: 30 },
+                barracks: { hp: 2500, radius: 35 },
+                turret: { hp: 1500, atk: 3, spd: 0, range: 350, cd: 8, radius: 7.5 },
+                miner: { hp: 800, atk: 0, spd: 0.6, buildTime: 480 },
+                reactor: { hp: 1200, radius: 20 }
+            },
+            skills: {
+                carrier: { maxDrones: 10, droneHpMult: 0.8, droneAtkMult: 0.8, mpRegen: 0.5 },
+                leviathan: { splashRadius: 150, splashDamageMult: 0.5, explosionFrames: 10 },
+                driller: { heatMax: 12, heatDamageStep: 0.25 },
+                repairer: { mpRegen: 0.25 },
+                railgun: { mpRegen: 0.15 },
+                baseRepairer: { healAmount: 2, healCooldown: 12, guardRadius: 450 }
+            },
+            ai: {
+                tickFrames: 45,
+                upgradeChance: 0.18,
+                trainChance: 0.85,
+                droneChance: 0.35,
+                reactorChance: 0.35,
+                turretChance: 0.45,
+                rallyDistanceFromBase: 260,
+                rallyReleaseDistance: 55,
+                targetSwitchChance: 0.18,
+                defenseHpRatio: 0.8,
+                evaluation: {
+                    ownBaseThreatRadius: 520,
+                    pressureRadius: 700,
+                    weakBaseWeight: 120,
+                    closeTargetRange: 2200,
+                    closeTargetDivisor: 20,
+                    turretPenaltyRush: 18,
+                    turretPenaltyDefault: 10,
+                    enemyArmyPenalty: 3,
+                    pressureWeight: 35,
+                    playerBias: 8,
+                    armyHpDivisor: 8,
+                    armyAtkWeight: 3,
+                    armyRangeDivisor: 10,
+                    queuedPowerMult: 0.55
+                },
+                barracksOffset: { x: 180, y: 180 },
+                turretPlacement: { minR: 150, maxR: 310, attempts: 18, enemyBias: 0.72 },
+                reactorPlacement: { minR: 100, maxR: 220 },
+                styles: {
+                    RUSH: { attackThreshold: 5, minAttackPower: 150, retreatAt: 1, miners: 5, turrets: 2, reactors: 3, upgradeBarracksAtArmy: 4, saveForUpgradeAtArmy: 6, unitMix: ['interceptor', 'interceptor', 'corvette', 'corvette'], maxQueue: 3 },
+                    FLEX: { attackThreshold: 7, minAttackPower: 260, retreatAt: 2, miners: 6, turrets: 3, reactors: 3, upgradeBarracksAtArmy: 5, saveForUpgradeAtArmy: 4, unitMix: ['interceptor', 'corvette', 'repairer', 'railgun'], maxQueue: 3 },
+                    LATE: { attackThreshold: 10, minAttackPower: 420, retreatAt: 3, miners: 7, turrets: 5, reactors: 3, upgradeBarracksAtArmy: 3, saveForUpgradeAtArmy: 3, unitMix: ['corvette', 'repairer', 'railgun', 'railgun'], maxQueue: 4 }
+                }
+            }
+        };
+
+        function getEffectiveStat(baseStat, inGameLevel, team, statKey) { 
+            let inGameMult = 1 + (inGameLevel * GAME_CONFIG.scaling.inGameUpgradeStep); let metaMult = 1.0;
+            if (team === 'player') { 
+                if (statKey) {
+                    let mappedKey = statKey.replace(/^(carrier|leviathan|driller)_/, 'dreadnought_');
+                    if (profile.upgrades[mappedKey]) metaMult = 1 + (profile.upgrades[mappedKey] * GAME_CONFIG.scaling.playerMetaStep); 
+                }
+            } 
+            else { metaMult = 1 + ((profile.sector - 1) * GAME_CONFIG.scaling.sectorEnemyStep); }
+            return baseStat * inGameMult * metaMult; 
+        }
+
+        const themes = {
+            'std': { hq: 'HQ.png', barracks: 'ARMY_BUILDING.png', reactor: 'POWER_PLANT.png', turret: 'turret.png', miner: 'mining_aircraft.png', interceptor: 'PLANE_1.png', corvette: 'PLANE_2.png', repairer: 'PLANE_3.png', railgun: 'PLANE_4.png', carrier: 'standard_carrier.png' },
+            'sea': { hq: 'SEA_HQ.png', barracks: 'SEA_ARMYBUILDING.png', reactor: 'SEA_POWERPLANT.png', turret: 'SEA_TURRET.png', miner: 'SEA_MINING_AIRCRAFT.png', interceptor: 'SEA_PLANE1.png', corvette: 'SEA_PLANE2.png', repairer: 'SEA_PLANE3.png', railgun: 'SEA_PLANE4.png', leviathan: 'sea_Leviathan.png' },
+            'under': { hq: 'UNDER_HQ.png', barracks: 'UNDER_ARMYBUILDING.png', reactor: 'UNDER_POWERPLANT.png', turret: 'UNDER_TURRET.png', miner: 'UNDER_MINING_AIRCRAFT.png', interceptor: 'UNDER_PLANE1.png', corvette: 'UNDER_PLANE2.png', repairer: 'UNDER_PLANE3.png', railgun: 'UNDER_PLANE4.png', driller: 'under_driller.png' }
+        };
+        const baseUrl = 'https://raw.githubusercontent.com/fitary/card-battle/refs/heads/main/';
+        const assets = {};
+        const assetLoadState = { total: 0, loaded: 0, failed: 0, warned: false };
+        function markAssetLoaded(ok) {
+            if (ok) assetLoadState.loaded++;
+            else assetLoadState.failed++;
+            if (!ok && !assetLoadState.warned && gameStarted) {
+                assetLoadState.warned = true;
+                showToast("Một số ảnh không tải được, dùng đồ họa dự phòng", "#ffd700");
+            }
+        }
+        for(let t in themes) {
+            for(let k in themes[t]) {
+                let key = t + '_' + k;
+                assets[key] = new Image();
+                assets[key].crossOrigin = "anonymous";
+                assetLoadState.total++;
+                assets[key].onload = () => markAssetLoaded(true);
+                assets[key].onerror = () => markAssetLoaded(false);
+                assets[key].src = baseUrl + themes[t][k];
+            }
         }
         
-        renderPlayers(data.players);
-    });
+        const imgBoom = new Image();
+        imgBoom.crossOrigin = "anonymous";
+        assetLoadState.total++;
+        imgBoom.onload = () => markAssetLoaded(true);
+        imgBoom.onerror = () => markAssetLoaded(false);
+        imgBoom.src = baseUrl + 'boom.png';
 
-    Network.onRoomUpdate((players) => {
-        renderPlayers(players);
-    });
+        function switchTab(tabId, btnElement) { document.querySelectorAll('#ui-container .tab-content').forEach(el => el.classList.remove('active')); document.querySelectorAll('#ui-container .tab-btn').forEach(el => el.classList.remove('active')); document.getElementById(tabId).classList.add('active'); btnElement.classList.add('active'); placementMode = null; if(gameStarted) updateUI(); }
 
-    function renderPlayers(players) {
-        const list = document.getElementById('player-list');
-        // socket.id được lấy từ file network.js
-        list.innerHTML = players.map(p => 
-            `<li>👤 ${p.name} ${p.id === socket.id ? '(Bạn)' : ''}</li>`
-        ).join('');
+        const canvas = document.getElementById("gameCanvas"); const ctx = canvas.getContext("2d");
+        let zoom = 0.5; let dpr = 1.0;
+        function updateZoom() { dpr = Math.min(window.devicePixelRatio || 1, 2); canvas.style.width = window.innerWidth + 'px'; canvas.style.height = window.innerHeight + 'px'; canvas.width = window.innerWidth * dpr; canvas.height = window.innerHeight * dpr; if(!gameStarted) zoom = window.innerWidth < 768 ? 0.3 : 0.5; }
+        window.addEventListener('resize', () => { updateZoom(); clampCamera(); }); updateZoom();
+        function changeZoom(delta) { zoom += delta; if (zoom < 0.15) zoom = 0.15; if (zoom > 2.0) zoom = 2.0; clampCamera(); }
+        
+        const MAP_W = GAME_CONFIG.map.width; const MAP_H = GAME_CONFIG.map.height; let cam = { x: 0, y: 0 };
+        let isDragging = false; let dragStart = {x: 0, y: 0}; let dragDist = 0; let placementMode = null; 
+
+        function clampCamera() { let maxCamX = MAP_W - window.innerWidth / zoom; let maxCamY = MAP_H - window.innerHeight / zoom; if(cam.x < 0) cam.x = 0; if(cam.y < 0) cam.y = 0; if(maxCamX > 0 && cam.x > maxCamX) cam.x = maxCamX; if(maxCamY > 0 && cam.y > maxCamY) cam.y = maxCamY; }
+
+        canvas.addEventListener('mousedown', e => { isDragging = true; dragStart = {x: e.clientX, y: e.clientY}; dragDist = 0; });
+        window.addEventListener('mousemove', e => { if(!isDragging) return; let dx = e.clientX - dragStart.x; let dy = e.clientY - dragStart.y; dragDist += Math.abs(dx) + Math.abs(dy); cam.x -= dx / zoom; cam.y -= dy / zoom; dragStart = {x: e.clientX, y: e.clientY}; clampCamera(); });
+        window.addEventListener('mouseup', e => { if(isDragging && dragDist < 10) handleMapClick(e.clientX, e.clientY); isDragging = false; });
+        canvas.addEventListener('touchstart', e => { e.preventDefault(); isDragging = true; dragStart = {x: e.touches[0].clientX, y: e.touches[0].clientY}; dragDist = 0; }, { passive: false });
+        window.addEventListener('touchmove', e => { if(!isDragging) return; e.preventDefault(); let dx = e.touches[0].clientX - dragStart.x; let dy = e.touches[0].clientY - dragStart.y; dragDist += Math.abs(dx) + Math.abs(dy); cam.x -= dx / zoom; cam.y -= dy / zoom; dragStart = {x: e.touches[0].clientX, y: e.touches[0].clientY}; clampCamera(); }, { passive: false });
+        window.addEventListener('touchend', e => { if(isDragging && dragDist < 10 && e.changedTouches.length > 0) handleMapClick(e.changedTouches[0].clientX, e.changedTouches[0].clientY); isDragging = false; }, { passive: false });
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        function handleMapClick(cx, cy) {
+            let wx = cx / zoom + cam.x; let wy = cy / zoom + cam.y; let base = getBase('player'); if (!base) return;
+            if (placementMode === 'turret') {
+                if (wx < GAME_CONFIG.map.edgePadding || wy < GAME_CONFIG.map.edgePadding || wx > MAP_W - GAME_CONFIG.map.edgePadding || wy > MAP_H - GAME_CONFIG.map.edgePadding) { showToast("Không thể xây sát rìa bản đồ!", "#ff4444"); return; }
+                let dist = Math.hypot(wx - base.x, wy - base.y); if (dist > 450) { showToast("Khoảng cách quá xa!", "#ff4444"); return; }
+                let overlap = false;
+                let allStructures = buildings.concat(reactors).concat(turrets);
+                for (let o of allStructures) { if (Math.hypot(o.x - wx, o.y - wy) < 50) { overlap = true; break; } }
+                
+                if (overlap) { showToast("Vị trí này quá chật!", "#ff4444"); return; }
+                if (gameData.player.gold >= GAME_CONFIG.economy.turretCost) { gameData.player.gold -= GAME_CONFIG.economy.turretCost; turrets.push(new Turret(wx, wy, 'player')); placementMode = null; updateUI(); }
+            } else if (placementMode === 'move_units') {
+                units.filter(u => u.team === 'player' && !u.isDrone).forEach(u => { 
+                    u.unitState = 'MOVE_TO_POINT'; u.targetX = wx; u.targetY = wy; 
+                    u.hasHoldPosition = false; 
+                });
+                placementMode = null; showToast("TẬP KẾT HẠM ĐỘI!"); updateUI();
+            }
+        }
+
+        function getSafePos(baseX, baseY, minR, maxR, obstacles, clearDist) {
+            for (let i = 0; i < 20; i++) {
+                let ang = Math.random() * Math.PI * 2;
+                let r = minR + Math.random() * (maxR - minR);
+                let bx = baseX + Math.cos(ang) * r;
+                let by = baseY + Math.sin(ang) * r;
+                if (bx < GAME_CONFIG.map.edgePadding || by < GAME_CONFIG.map.edgePadding || bx > MAP_W - GAME_CONFIG.map.edgePadding || by > MAP_H - GAME_CONFIG.map.edgePadding) continue;
+                let overlap = false;
+                for (let o of obstacles) {
+                    if (Math.hypot(o.x - bx, o.y - by) < clearDist) { overlap = true; break; }
+                }
+                if (!overlap) return {x: bx, y: by};
+            }
+            return null;
+        }
+
+        function getSpecialShipHelper(theme) {
+            if(theme === 'std') return { type: 'carrier', name: 'MẪU HẠM' };
+            if(theme === 'sea') return { type: 'leviathan', name: 'THỦY THẦN' };
+            if(theme === 'under') return { type: 'driller', name: 'NHIỆT HẠCH' };
+            return { type: 'carrier', name: 'MẪU HẠM' };
+        }
+
+        const unitStats = GAME_CONFIG.units;
+        const bldStats = GAME_CONFIG.buildings;
+
+        function createInitialUpgrades() { return { hq: { hpLv: 0 }, turret: { hpLv: 0, atkLv: 0 }, miner: { hpLv: 0, spdLv: 0 }, interceptor: { hpLv: 0, atkLv: 0, spdLv: 0 }, corvette: { hpLv: 0, atkLv: 0, spdLv: 0 }, repairer: { hpLv: 0, atkLv: 0, spdLv: 0 }, railgun: { hpLv: 0, atkLv: 0, spdLv: 0 }, spc: { hpLv: 0, atkLv: 0, spdLv: 0 } }; }
+
+        let gameData = {}; let buildings = []; let units = []; let miners = []; let turrets = []; let reactors = []; let mines = []; let stars = [];
+        let gameOver = false; const MAX_MINES = GAME_CONFIG.map.maxMines;
+        const ALL_TEAMS = ['player', 'bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'];
+        for(let i=0; i< (MAP_W * MAP_H) / GAME_CONFIG.map.starDensityDivisor; i++) { stars.push({ x: Math.random()*MAP_W, y: Math.random()*MAP_H, size: Math.random()*2.5, alpha: Math.random() }); }
+
+        function drawFactionShape(ctx, x, y, radius, sides, color, isFill, angleOffset = -Math.PI/2) { ctx.beginPath(); for(let i=0; i<sides; i++) { let angle = angleOffset + (i * (Math.PI*2/sides)); let px = x + Math.cos(angle)*radius; let py = y + Math.sin(angle)*radius; if(i===0) ctx.moveTo(px, py); else ctx.lineTo(px, py); } ctx.closePath(); if(isFill) { ctx.fillStyle = "#111"; ctx.fill(); } ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke(); }
+
+        class Entity {
+            constructor(x, y, team, typeStr, baseHp) { 
+                this.x = x; this.y = y; this.team = team; this.entityType = typeStr; this.markedForDeletion = false; 
+                this.color = gameData[team].color; this.sides = gameData[team].sides; 
+                let upgKey = ['carrier', 'leviathan', 'driller'].includes(typeStr) ? 'spc' : typeStr;
+                let hpLv = gameData[team].upg[upgKey] ? gameData[team].upg[upgKey].hpLv : 0; 
+                let metaKey = ['carrier', 'leviathan', 'driller'].includes(typeStr) ? 'dreadnought_hp' : typeStr + '_hp';
+                this.maxHp = getEffectiveStat(baseHp, hpLv, team, metaKey); 
+                
+                if (typeStr === 'turret') {
+                    let inGameHpLv = gameData[team].inGameTurretHpLv || 0;
+                    this.maxHp *= (1 + (inGameHpLv * GAME_CONFIG.scaling.turretHpUpgradeStep));
+                }
+                this.hp = this.maxHp; 
+            }
+            takeDamage(amount) {
+                this.hp -= amount;
+                if (this.hp <= 0 && !this.markedForDeletion) {
+                    this.markedForDeletion = true;
+                    if (this.entityType === 'hq' && this.team !== 'player') unlockGeneral(this.team);
+                }
+            }
+            drawBarStats(ctx, yOffset, width, currentMp = 0, maxMp = 0) { ctx.fillStyle = "rgba(255, 0, 0, 0.4)"; ctx.fillRect(this.x - width/2, this.y - yOffset, width, 3); ctx.fillStyle = this.color; ctx.fillRect(this.x - width/2, this.y - yOffset, width * (Math.max(0, this.hp) / this.maxHp), 3); if (maxMp > 0) { ctx.fillStyle = "rgba(0, 0, 100, 0.5)"; ctx.fillRect(this.x - width/2, this.y - yOffset + 4, width, 2); ctx.fillStyle = "#0088ff"; ctx.fillRect(this.x - width/2, this.y - yOffset + 4, width * (Math.max(0, currentMp) / maxMp), 2); } }
+        }
+
+        class GoldMine { constructor(x, y) { this.x = x; this.y = y; this.radius = 18; this.capacity = 400; this.markedForDeletion = false; } extract() { if (this.capacity > 0) { this.capacity--; if (this.capacity <= 0) this.markedForDeletion = true; return 1; } return 0; } draw(ctx) { ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fillStyle = "rgba(255, 215, 0, 0.1)"; ctx.fill(); ctx.strokeStyle = "#ffee55"; ctx.stroke(); ctx.beginPath(); ctx.arc(this.x, this.y, this.radius * (this.capacity/400), 0, Math.PI * 2); ctx.fillStyle = "rgba(255, 255, 255, 0.6)"; ctx.fill(); ctx.fillStyle = "#fff"; ctx.font = "10px Arial"; ctx.textAlign = "center"; ctx.fillText(this.capacity, this.x, this.y + 28); } }
+        class Building extends Entity { 
+            constructor(x, y, team, type) { 
+                let tStr = type === 'Base' ? 'hq' : 'barracks'; 
+                super(x, y, team, tStr, type === 'Base' ? bldStats.hq.hp : bldStats.barracks.hp); 
+                this.type = type; 
+                this.radius = type === 'Base' ? 70 : bldStats.barracks.radius;
+                this.range = bldStats.hq.range; this.attackCooldown = 0; this.laserDrawFrames = 0; this.laserTarget = null;
+                this.queue = []; this.buildTimer = 0;
+            } 
+            update(entities) { 
+                if (this.type === 'Base') {
+                    if (this.attackCooldown > 0) this.attackCooldown--; if (this.laserDrawFrames > 0) this.laserDrawFrames--; let dmg = bldStats.hq.atk; let target = null; let minDist = Infinity; for (let ent of entities) { if (ent.team !== this.team && !ent.markedForDeletion) { let dist = Math.hypot(ent.x - this.x, ent.y - this.y); if (dist < minDist) { minDist = dist; target = ent; } } } if (target && minDist <= this.range && this.attackCooldown <= 0) { target.takeDamage(dmg); this.attackCooldown = bldStats.hq.cd; this.laserTarget = target; this.laserDrawFrames = 5; } 
+                }
+
+                if (this.queue.length > 0) {
+                    this.buildTimer++;
+                    let currentJob = this.queue[0];
+                    if (this.buildTimer >= currentJob.buildTime) {
+                        this.buildTimer = 0;
+                        this.queue.shift();
+                        if (currentJob.unitType === 'miner') {
+                            miners.push(new Miner(this.x + 80, this.y + 80, this.team));
+                        } else {
+                            units.push(new CombatUnit(this.x + 80, this.y + 80, this.team, currentJob.unitType));
+                        }
+                    }
+                }
+            } 
+            draw(ctx) { 
+                let bldType = this.type === 'Base' ? 'hq' : 'barracks'; let imgKey = gameData[this.team].theme + '_' + bldType; let img = assets[imgKey]; let drawSize = this.radius * 2.2; 
+                if (img && img.complete && img.naturalWidth > 0) { 
+                    let aspect = img.naturalHeight / img.naturalWidth;
+                    let w = drawSize; let h = drawSize;
+                    if (aspect > 1) { w = drawSize / aspect; } else if (aspect < 1) { h = drawSize * aspect; }
+                    ctx.save(); ctx.translate(this.x, this.y); ctx.shadowColor = this.color; ctx.shadowBlur = 20; 
+                    ctx.drawImage(img, -w/2, -h/2, w, h); ctx.restore(); 
+                } else { drawFactionShape(ctx, this.x, this.y, this.radius, this.sides, this.color, true); ctx.fillStyle = "#fff"; ctx.font = "12px Arial"; ctx.textAlign = "center"; ctx.fillText(this.type === 'Base' ? "HQ" : "FAC", this.x, this.y + 4); } 
+                if (this.type === 'Barracks') { let lv = gameData[this.team].barracksLevel; ctx.fillStyle = "#fff"; ctx.font = "bold 12px Arial"; ctx.textAlign = "center"; ctx.fillText("Lv." + lv, this.x, this.y - this.radius - 10); } 
+                if (this.laserDrawFrames > 0 && this.laserTarget && !this.laserTarget.markedForDeletion) { ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.laserTarget.x, this.laserTarget.y); ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke(); } 
+                this.drawBarStats(ctx, this.radius + 15 + (this.type === 'Barracks' ? 10 : 0), this.radius*1.5); 
+                
+                if (this.queue.length > 0) {
+                    let progress = this.buildTimer / this.queue[0].buildTime;
+                    let barWidth = this.radius * 2;
+                    let barY = this.y - this.radius - (this.type === 'Barracks' ? 35 : 25);
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.7)"; ctx.fillRect(this.x - barWidth/2, barY, barWidth, 4);
+                    ctx.fillStyle = "#00ff00"; ctx.fillRect(this.x - barWidth/2, barY, barWidth * progress, 4);
+                    ctx.fillStyle = "#fff"; ctx.font = "bold 9px Arial"; ctx.textAlign = "center";
+                    ctx.fillText(`Đang tạo (${this.queue.length})`, this.x, barY - 4);
+                }
+            } 
+        }
+        class Reactor extends Entity { constructor(x, y, team) { super(x, y, team, 'reactor', bldStats.reactor.hp); this.radius = bldStats.reactor.radius; this.tick = 0; } update() { this.tick++; if(this.tick >= GAME_CONFIG.economy.reactorTickFrames) { gameData[this.team].gold += GAME_CONFIG.economy.reactorGoldPerTick; this.tick = 0; } } draw(ctx) { let imgKey = gameData[this.team].theme + '_reactor'; let img = assets[imgKey]; let drawSize = this.radius * 2.2; if (img && img.complete && img.naturalWidth > 0) { ctx.save(); ctx.translate(this.x, this.y); ctx.shadowColor = this.color; ctx.shadowBlur = 15; ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize); ctx.restore(); } else { ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fillStyle = "#002200"; ctx.fill(); ctx.strokeStyle = "#00ff00"; ctx.stroke(); } this.drawBarStats(ctx, this.radius + 12, this.radius*1.5); } }
+        
+        class Turret extends Entity { 
+            constructor(x, y, team) { 
+                super(x, y, team, 'turret', bldStats.turret.hp); 
+                this.radius = bldStats.turret.radius;
+                this.range = bldStats.turret.range; 
+                this.attackCooldown = 0; 
+                this.angle = -Math.PI / 2; 
+                this.laserDrawFrames = 0;
+                this.laserTarget = null;
+            } 
+            update(entities) { 
+                if (this.attackCooldown > 0) this.attackCooldown--; 
+                if (this.laserDrawFrames > 0) this.laserDrawFrames--;
+                
+                let atkLv = gameData[this.team].upg['turret'].atkLv; 
+                let inGameLv = gameData[this.team].inGameTurretLv || 0;
+                let dmg = getEffectiveStat(bldStats.turret.atk, atkLv, this.team, 'turret_atk') + (inGameLv * GAME_CONFIG.scaling.turretAtkFlatStep); 
+                
+                let target = null; let minDist = Infinity; 
+                for (let ent of entities) { 
+                    if (ent.team !== this.team && !ent.markedForDeletion) { 
+                        let dist = Math.hypot(ent.x - this.x, ent.y - this.y); 
+                        if (dist < minDist) { minDist = dist; target = ent; } 
+                    } 
+                } 
+                if (target && minDist <= this.range) { 
+                    let dx = target.x - this.x; let dy = target.y - this.y; 
+                    this.angle = Math.atan2(dy, dx); 
+                    if (this.attackCooldown === 0) { 
+                        target.takeDamage(dmg); 
+                        this.attackCooldown = bldStats.turret.cd; 
+                        this.laserTarget = target;
+                        this.laserDrawFrames = 3; 
+                    } 
+                } 
+            } 
+            draw(ctx) { 
+                let imgKey = gameData[this.team].theme + '_turret'; let img = assets[imgKey]; let drawSize = this.radius * 3.5; 
+                if (img && img.complete && img.naturalWidth > 0) { 
+                    ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle + Math.PI/2); ctx.shadowColor = this.color; ctx.shadowBlur = 15; ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize); ctx.restore(); 
+                } else { 
+                    ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle + Math.PI/2); drawFactionShape(ctx, 0, 0, this.radius, this.sides, this.color, true, 0); ctx.restore(); 
+                } 
+                if (this.laserDrawFrames > 0 && this.laserTarget && !this.laserTarget.markedForDeletion) {
+                    ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.laserTarget.x, this.laserTarget.y);
+                    ctx.strokeStyle = this.color; ctx.lineWidth = 2; ctx.stroke();
+                }
+                this.drawBarStats(ctx, this.radius + 15, 25); 
+            } 
+        }
+
+        class Miner extends Entity { constructor(x, y, team) { super(x, y, team, 'miner', bldStats.miner.hp); this.radius = 10; this.state = 'moving_to_mine'; this.carryAmount = 0; this.maxCarry = 20; this.mineTimer = 0; this.targetMine = null; this.angle = -Math.PI/2; } update(minesArray, basesArray) { let spdLv = gameData[this.team].upg['miner'].spdLv; let speed = getEffectiveStat(bldStats.miner.spd, spdLv, this.team, 'miner_spd'); if (this.state === 'moving_to_mine' || this.state === 'mining') { if (!this.targetMine || this.targetMine.markedForDeletion) { let closestMine = null; let minDist = Infinity; minesArray.forEach(m => { let d = Math.hypot(m.x - this.x, m.y - this.y); if (d < minDist) { minDist = d; closestMine = m; } }); this.targetMine = closestMine; if (!this.targetMine) { this.state = 'returning'; return; } } let dx = this.targetMine.x - this.x; let dy = this.targetMine.y - this.y; let dist = Math.hypot(dx, dy); if (dist > this.radius + this.targetMine.radius + 20) { this.state = 'moving_to_mine'; this.angle = Math.atan2(dy, dx); this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; } else { this.state = 'mining'; this.mineTimer++; if (this.mineTimer >= 30) { let gathered = this.targetMine.extract(); if (gathered > 0) { this.carryAmount += gathered; this.mineTimer = 0; if (this.carryAmount >= this.maxCarry) this.state = 'returning'; } } } } else if (this.state === 'returning') { let myBase = basesArray.find(b => b.team === this.team && b.type === 'Base'); if (myBase) { let dx = myBase.x - this.x; let dy = myBase.y - this.y; let dist = Math.hypot(dx, dy); if (dist > this.radius + myBase.radius + 25) { this.angle = Math.atan2(dy, dx); this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; } else { gameData[this.team].gold += this.carryAmount; this.carryAmount = 0; this.targetMine = null; this.state = 'moving_to_mine'; } } } } draw(ctx) { let imgKey = gameData[this.team].theme + '_miner'; let img = assets[imgKey]; let drawSize = this.radius * 3.5; if (img && img.complete && img.naturalWidth > 0) { ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle + Math.PI/2); ctx.shadowColor = this.color; ctx.shadowBlur = 15; ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize); ctx.restore(); } else { ctx.save(); ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fillStyle = "#222"; ctx.fill(); ctx.strokeStyle = this.color; ctx.stroke(); ctx.restore(); } this.drawBarStats(ctx, this.radius + 12, 20); } }
+        
+        class CombatUnit extends Entity { 
+            constructor(x, y, team, type) { 
+                let s = unitStats[type]; super(x, y, team, type, s.hp); this.unitType = type; this.unitState = 'IDLE'; this.targetTeam = null; this.radius = s.radius; this.range = s.range; this.aggroRange = s.aggro; this.attackCooldown = 0; this.mp = 0; this.maxMp = s.mpCost > 0 ? s.mpCost : 100; this.mpCost = s.mpCost; this.mpRegen = type === 'railgun' ? GAME_CONFIG.skills.railgun.mpRegen : (type === 'carrier' ? GAME_CONFIG.skills.carrier.mpRegen : GAME_CONFIG.skills.repairer.mpRegen); this.cooldownMax = s.cd; this.laserDrawFrames = 0; this.laserTarget = null; this.angle = -Math.PI / 2; this.targetX = null; this.targetY = null; 
+                this.heatLevel = 0; this.lastTarget = null;
+                this.drones = []; this.isDrone = false; this.motherShip = null; this.hasHoldPosition = false;
+            } 
+            
+            update(entities, basesArray) { 
+                if (this.unitType === 'carrier') {
+                    this.drones = this.drones.filter(d => !d.markedForDeletion);
+                    if (this.drones.length < GAME_CONFIG.skills.carrier.maxDrones) {
+                        if (this.mp < this.maxMp) this.mp += this.mpRegen;
+                        if (this.mp >= this.maxMp) {
+                            this.mp = 0;
+                            let drone = new CombatUnit(this.x, this.y, this.team, 'interceptor');
+                            drone.maxHp *= GAME_CONFIG.skills.carrier.droneHpMult; drone.hp = drone.maxHp;
+                            drone.customAtk = getEffectiveStat(unitStats['interceptor'].atk, (gameData[this.team].upg['interceptor']||{}).atkLv, this.team, 'interceptor_atk') * GAME_CONFIG.skills.carrier.droneAtkMult;
+                            drone.radius *= 0.5;
+                            drone.isDrone = true; drone.motherShip = this;
+                            this.drones.push(drone); units.push(drone);
+                        }
+                    } else {
+                        this.mp = this.maxMp; 
+                    }
+                } else if (this.mpCost > 0 && this.mp < this.maxMp) {
+                    this.mp += this.mpRegen; 
+                }
+
+                if (this.attackCooldown > 0) this.attackCooldown--; if (this.laserDrawFrames > 0) this.laserDrawFrames--; 
+                
+                let upgKey = ['carrier', 'leviathan', 'driller'].includes(this.unitType) ? 'spc' : this.unitType;
+                let upg = gameData[this.team].upg[upgKey] || {atkLv:0, spdLv:0}; 
+                let baseS = unitStats[this.unitType]; 
+                
+                let metaAtkKey = ['carrier', 'leviathan', 'driller'].includes(this.unitType) ? 'dreadnought_atk' : this.unitType + '_atk';
+                let metaSpdKey = ['carrier', 'leviathan', 'driller'].includes(this.unitType) ? 'dreadnought_spd' : this.unitType + '_spd';
+                
+                let damage = this.customAtk !== undefined ? this.customAtk : getEffectiveStat(baseS.atk, upg.atkLv, this.team, metaAtkKey); 
+                let speed = getEffectiveStat(baseS.spd, upg.spdLv, this.team, metaSpdKey); 
+                let isEngaging = false; 
+
+                if (this.unitType === 'base_repairer') {
+                    let myBase = basesArray.find(b => b.team === this.team && b.type === 'Base');
+                    let targetToFix = null; let minDist = Infinity;
+                    if (myBase) {
+                        let candidates = entities.filter(ent => ent.team === this.team && !ent.markedForDeletion && ent.hp < ent.maxHp);
+                        for (let ent of candidates) {
+                            let distToHQ = Math.hypot(ent.x - myBase.x, ent.y - myBase.y);
+                            if (distToHQ <= GAME_CONFIG.skills.baseRepairer.guardRadius) { 
+                                let distToMe = Math.hypot(ent.x - this.x, ent.y - this.y);
+                                if (distToMe < minDist) { minDist = distToMe; targetToFix = ent; }
+                            }
+                        }
+                    }
+                    if (targetToFix) {
+                        let dx = targetToFix.x - this.x; let dy = targetToFix.y - this.y; this.angle = Math.atan2(dy, dx); let dist = Math.hypot(dx, dy);
+                        if (dist > this.range) { this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; } 
+                        else if (this.attackCooldown <= 0) {
+                            targetToFix.hp = Math.min(targetToFix.maxHp, targetToFix.hp + GAME_CONFIG.skills.baseRepairer.healAmount); 
+                            this.laserTarget = targetToFix; this.laserDrawFrames = 4; this.attackCooldown = GAME_CONFIG.skills.baseRepairer.healCooldown; 
+                        }
+                    } else if (myBase) {
+                        let dx = myBase.x - this.x; let dy = myBase.y - this.y; let dist = Math.hypot(dx, dy);
+                        if (dist > 120) { this.angle = Math.atan2(dy, dx); this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; }
+                    }
+                    return; 
+                }
+
+                if (this.unitType === 'repairer') {
+                    let damagedAlly = null; let minDistToDamaged = Infinity;
+                    let closestCombatAlly = null; let minDistToCombat = Infinity;
+                    for (let ent of entities) {
+                        if (ent.team === this.team && !ent.markedForDeletion && ent instanceof CombatUnit && ent.unitType !== 'base_repairer' && ent !== this) {
+                            let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
+                            if (ent.unitType !== 'repairer' && dist < minDistToCombat) { minDistToCombat = dist; closestCombatAlly = ent; }
+                            if (ent.hp < ent.maxHp && dist < minDistToDamaged) { minDistToDamaged = dist; damagedAlly = ent; }
+                        }
+                    }
+                    if (damagedAlly) {
+                        let dx = damagedAlly.x - this.x; let dy = damagedAlly.y - this.y;
+                        if (minDistToDamaged > this.range) {
+                            this.angle = Math.atan2(dy, dx); this.x += (dx / minDistToDamaged) * speed; this.y += (dy / minDistToDamaged) * speed;
+                        } else if (this.attackCooldown <= 0 && this.mp >= this.mpCost) {
+                            this.angle = Math.atan2(dy, dx); this.mp -= this.mpCost;
+                            damagedAlly.hp = Math.min(damagedAlly.maxHp, damagedAlly.hp + damage);
+                            this.attackCooldown = this.cooldownMax; this.laserTarget = damagedAlly; this.laserDrawFrames = 8;
+                        }
+                    } else if (closestCombatAlly) {
+                        let dx = closestCombatAlly.x - this.x; let dy = closestCombatAlly.y - this.y;
+                        if (minDistToCombat > 100) { this.angle = Math.atan2(dy, dx); this.x += (dx / minDistToCombat) * speed; this.y += (dy / minDistToCombat) * speed; }
+                    } else {
+                        let myBase = basesArray.find(b => b.team === this.team && b.type === 'Base');
+                        if (myBase && !this.hasHoldPosition) {
+                            let dx = myBase.x - this.x; let dy = myBase.y - this.y; let dist = Math.hypot(dx, dy);
+                            if (dist > 260) { this.angle = Math.atan2(dy, dx); this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; }
+                        }
+                    }
+                    return; 
+                }
+
+                if (this.unitState !== 'MOVE_TO_POINT' && this.unitType !== 'carrier') { 
+                    let enemyToAttack = null; let minDistToEnemy = Infinity; 
+                    for (let ent of entities) { 
+                        if (ent.team !== this.team && !ent.markedForDeletion) { 
+                            let dist = Math.hypot(ent.x - this.x, ent.y - this.y); 
+                            if (dist < minDistToEnemy) { minDistToEnemy = dist; enemyToAttack = ent; } 
+                        } 
+                    } 
+                    if (enemyToAttack && minDistToEnemy <= this.aggroRange) { 
+                        isEngaging = true; let dx = enemyToAttack.x - this.x; let dy = enemyToAttack.y - this.y; this.angle = Math.atan2(dy, dx); let dist = Math.hypot(dx, dy); 
+                        if (dist > this.range) { 
+                            this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; 
+                            if (this.unitType === 'driller') this.heatLevel = 0; 
+                        } else if (this.attackCooldown <= 0 && (this.mpCost === 0 || this.mp >= this.mpCost)) { 
+                            if (this.mpCost > 0) this.mp -= this.mpCost; 
+                            let finalDamage = damage;
+                            
+                            if (this.unitType === 'driller') {
+                                if (this.lastTarget === enemyToAttack) this.heatLevel = Math.min(GAME_CONFIG.skills.driller.heatMax, this.heatLevel + 1);
+                                else { this.heatLevel = 0; this.lastTarget = enemyToAttack; }
+                                finalDamage = damage * (1 + this.heatLevel * GAME_CONFIG.skills.driller.heatDamageStep);
+                            }
+                            
+                            enemyToAttack.takeDamage(finalDamage); 
+                            
+                            // Nổ lan LEVIATHAN
+                            if (this.unitType === 'leviathan') {
+                                explosions.push({x: enemyToAttack.x, y: enemyToAttack.y, timer: GAME_CONFIG.skills.leviathan.explosionFrames});
+                                for(let ent of entities) {
+                                    if (ent.team !== this.team && ent !== enemyToAttack && !ent.markedForDeletion) {
+                                        if (Math.hypot(ent.x - enemyToAttack.x, ent.y - enemyToAttack.y) < GAME_CONFIG.skills.leviathan.splashRadius) ent.takeDamage(finalDamage * GAME_CONFIG.skills.leviathan.splashDamageMult);
+                                    }
+                                }
+                            }
+                            
+                            this.attackCooldown = this.cooldownMax; this.laserTarget = enemyToAttack; 
+                            this.laserDrawFrames = (this.unitType === 'driller') ? 8 : 6; 
+                        } 
+                    } else {
+                        if (this.unitType === 'driller') this.heatLevel = 0;
+                    }
+                } 
+                
+                if (!isEngaging) { 
+                    let moveTarget = null; let directCoord = null; 
+                    
+                    if (this.unitState === 'IDLE') { 
+                        if (this.isDrone && this.motherShip && !this.motherShip.markedForDeletion) {
+                            if (Math.hypot(this.motherShip.x - this.x, this.motherShip.y - this.y) > 80) moveTarget = this.motherShip;
+                        } else {
+                            let myBase = basesArray.find(b => b.team === this.team && b.type === 'Base'); 
+                            if (myBase && Math.hypot(myBase.x - this.x, myBase.y - this.y) > 260 && !this.hasHoldPosition) moveTarget = myBase; 
+                        }
+                    } 
+                    else if (this.unitState === 'ATTACKING' && this.targetTeam) { 
+                        let enemyBase = basesArray.find(b => b.team === this.targetTeam && b.type === 'Base'); 
+                        if (enemyBase) moveTarget = enemyBase; 
+                        else { 
+                            this.unitState = 'IDLE'; 
+                            this.hasHoldPosition = false; 
+                        } 
+                    } 
+                    else if (this.unitState === 'MOVE_TO_POINT') { 
+                        let distToDest = Math.hypot(this.targetX - this.x, this.targetY - this.y); 
+                        if (distToDest > 40) directCoord = { x: this.targetX, y: this.targetY }; 
+                        else { 
+                            this.unitState = 'IDLE'; 
+                            this.hasHoldPosition = true; 
+                        } 
+                    } 
+
+                    if (moveTarget) { 
+                        let dx = moveTarget.x - this.x; let dy = moveTarget.y - this.y; let dist = Math.hypot(dx, dy); 
+                        if (dist > this.radius + moveTarget.radius) { this.angle = Math.atan2(dy, dx); this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; } 
+                    } 
+                    else if (directCoord) { 
+                        let dx = directCoord.x - this.x; let dy = directCoord.y - this.y; let dist = Math.hypot(dx, dy); 
+                        if (dist > 0) { this.angle = Math.atan2(dy, dx); this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; } 
+                    } 
+                } 
+            } 
+
+            draw(ctx) { 
+                let visualType = this.unitType === 'base_repairer' ? 'repairer' : this.unitType;
+                let imgKey = gameData[this.team].theme + '_' + visualType;
+                let img = assets[imgKey]; 
+                
+                let drawSize;
+                if (this.unitType === 'base_repairer') drawSize = 10;
+                else if (['carrier', 'leviathan', 'driller'].includes(this.unitType)) drawSize = 154; 
+                else drawSize = this.radius * 3.5;
+                
+                if (img && img.complete && img.naturalWidth > 0) { 
+                    // SCALE TỈ LỆ CHUẨN - CHỐNG BÓP MÉO HÌNH
+                    let aspect = img.naturalHeight / img.naturalWidth;
+                    let w = drawSize; let h = drawSize;
+                    if (aspect > 1) { w = drawSize / aspect; } else if (aspect < 1) { h = drawSize * aspect; }
+                    
+                    ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle + Math.PI/2); ctx.shadowColor = this.color; ctx.shadowBlur = 15; 
+                    ctx.drawImage(img, -w/2, -h/2, w, h); 
+                    ctx.restore(); 
+                } else { 
+                    drawFactionShape(ctx, this.x, this.y, this.radius, this.sides, this.color, true); 
+                } 
+                
+                if (this.laserDrawFrames > 0 && this.laserTarget && !this.laserTarget.markedForDeletion) { 
+                    ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.laserTarget.x, this.laserTarget.y); 
+                    if (this.unitType === 'repairer' || this.unitType === 'base_repairer') {
+                        ctx.strokeStyle = "#00ff00"; ctx.lineWidth = 1.5;
+                    } else if (this.unitType === 'driller') {
+                        ctx.strokeStyle = `rgb(255, ${Math.max(0, 255 - this.heatLevel * 15)}, 0)`; ctx.lineWidth = 2 + this.heatLevel * 0.3;
+                    } else if (this.unitType === 'leviathan') {
+                        ctx.strokeStyle = "rgba(0,0,0,0)"; 
+                    } else {
+                        ctx.strokeStyle = this.color; ctx.lineWidth = 1.5; 
+                    }
+                    ctx.stroke(); 
+                } 
+                
+                if(!this.isDrone) this.drawBarStats(ctx, this.radius + 15, this.radius * 3, this.mp, this.maxMp); 
+                else this.drawBarStats(ctx, this.radius + 8, this.radius * 3); 
+            } 
+        }
+
+        // DRONE KHÔNG CÒN VA CHẠM (BAY XUYÊN TÀU MẸ VÀ CÁC TÀU KHÁC)
+        function resolveCollisions(entities) { 
+            for (let i = 0; i < entities.length; i++) { 
+                for (let j = i + 1; j < entities.length; j++) { 
+                    let e1 = entities[i]; let e2 = entities[j]; 
+                    if (e1.markedForDeletion || e2.markedForDeletion) continue; 
+                    if (e1.isDrone || e2.isDrone) continue; // Bỏ qua va chạm cho drone
+                    
+                    let dx = e2.x - e1.x; let dy = e2.y - e1.y; let dist = Math.hypot(dx, dy); let minDist = e1.radius + e2.radius + 15; 
+                    if (dist < minDist && dist > 0) { 
+                        let overlap = minDist - dist; let nx = dx / dist; let ny = dy / dist; 
+                        let m1 = (e1 instanceof Building || e1 instanceof GoldMine || e1 instanceof Turret || e1 instanceof Reactor) ? 0 : 0.5; 
+                        let m2 = (e2 instanceof Building || e2 instanceof GoldMine || e2 instanceof Turret || e2 instanceof Reactor) ? 0 : 0.5; 
+                        if(m1===0 && m2===0) continue; if(m1===0) m2 = 1; if(m2===0) m1 = 1; 
+                        e1.x -= nx * overlap * m1 * 0.3; e1.y -= ny * overlap * m1 * 0.3; 
+                        e2.x += nx * overlap * m2 * 0.3; e2.y += ny * overlap * m2 * 0.3; 
+                    } 
+                } 
+            } 
+        }
+
+        function getValidSpawnPos(existingPositions) { let limit = 2000; while(limit > 0) { let x = 400 + Math.random() * (MAP_W - 800); let y = 400 + Math.random() * (MAP_H - 800); let valid = true; for(let pos of existingPositions) { if(Math.hypot(pos.x - x, pos.y - y) < 1400) { valid = false; break; } } if(valid) return {x, y}; limit--; } return {x: Math.random()*MAP_W, y: Math.random()*MAP_H}; }
+
+        function initGame() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+            let strats = ['RUSH', 'LATE', 'FLEX'];
+            let tList = ['std', 'sea', 'under'];
+            function getRandomTheme() { return tList[Math.floor(Math.random() * tList.length)]; }
+
+            gameData = {
+                player: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#00ffff', sides: 3, theme: getRandomTheme(), upg: createInitialUpgrades() },
+                bot1: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ff3333', sides: 4, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
+                bot2: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#33ff33', sides: 5, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
+                bot3: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#cc33ff', sides: 6, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
+                bot4: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ffcc00', sides: 7, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
+                bot5: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ff6600', sides: 8, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
+                bot6: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ff00ff', sides: 9, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
+                bot7: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ffffff', sides: 10, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null }
+            };
+            buildings = []; units = []; miners = []; turrets = []; reactors = []; mines = []; explosions = []; gameOver = false; frameCount = 0; let spawnPositions = []; 
+            matchStartTime = Date.now();
+            ALL_TEAMS.forEach(team => { 
+                let pos = getValidSpawnPos(spawnPositions); spawnPositions.push(pos); buildings.push(new Building(pos.x, pos.y, team, 'Base')); 
+                mines.push(new GoldMine(pos.x + 400, pos.y - 400)); miners.push(new Miner(pos.x + 100, pos.y - 100, team)); 
+                if(team === 'player') { cam.x = pos.x - (window.innerWidth / zoom)/2; cam.y = pos.y - (window.innerHeight / zoom)/2; clampCamera(); } 
+            }); 
+            
+            for(let i = 0; i < MAX_MINES - 8; i++) { 
+                let pos = getSafePos(3000, 3000, 0, 2700, buildings.concat(mines), 100);
+                if(pos) mines.push(new GoldMine(pos.x, pos.y));
+            } 
+        }
+
+        function getBase(team) { return buildings.find(b => b.team === team && b.type === 'Base'); }
+        let currentUpgTarget = 'hq'; function openUpgradeModal() { document.getElementById('upgrade-modal').style.display = 'flex'; renderTechStats(); } function closeUpgradeModal() { document.getElementById('upgrade-modal').style.display = 'none'; } 
+        
+        function renderTechStats() { 
+            currentUpgTarget = document.getElementById('upg-target').value; 
+            let uData = gameData.player.upg[currentUpgTarget]; 
+            let actualTarget = currentUpgTarget === 'spc' ? getSpecialShipHelper(gameData.player.theme).type : currentUpgTarget;
+            
+            let baseHp = 0, baseAtk = 0, baseSpd = 0; 
+            if(currentUpgTarget === 'hq') baseHp = bldStats.hq.hp; 
+            else { 
+                baseHp = unitStats[actualTarget].hp; 
+                baseAtk = unitStats[actualTarget].atk; 
+                baseSpd = unitStats[actualTarget].spd; 
+            } 
+            
+            let metaHpKey = currentUpgTarget === 'spc' ? 'dreadnought_hp' : actualTarget+'_hp';
+            let metaAtkKey = currentUpgTarget === 'spc' ? 'dreadnought_atk' : actualTarget+'_atk';
+            let metaSpdKey = currentUpgTarget === 'spc' ? 'dreadnought_spd' : actualTarget+'_spd';
+
+            document.getElementById('row-atk').style.display = currentUpgTarget === 'hq' ? 'none' : 'flex'; 
+            document.getElementById('row-spd').style.display = currentUpgTarget === 'hq' ? 'none' : 'flex'; 
+            document.getElementById('btn-up-atk').style.display = currentUpgTarget === 'hq' ? 'none' : 'block'; 
+            document.getElementById('btn-up-spd').style.display = currentUpgTarget === 'hq' ? 'none' : 'block'; 
+            
+            document.getElementById('stat-hp').innerText = `${baseHp} -> ${Math.floor(getEffectiveStat(baseHp, uData.hpLv, 'player', metaHpKey))} (Lv${uData.hpLv})`; 
+            if(currentUpgTarget !== 'hq') { 
+                document.getElementById('stat-atk').innerText = `${baseAtk} -> ${Math.floor(getEffectiveStat(baseAtk, uData.atkLv, 'player', metaAtkKey))} (Lv${uData.atkLv})`; 
+                document.getElementById('stat-spd').innerText = `${baseSpd.toFixed(1)} -> ${getEffectiveStat(baseSpd, uData.spdLv, 'player', metaSpdKey).toFixed(2)} (Lv${uData.spdLv})`; 
+            } 
+            let btnDisabled = gameData.player.gold < GAME_CONFIG.economy.techUpgradeCost; 
+            document.getElementById('btn-up-atk').disabled = btnDisabled; document.getElementById('btn-up-hp').disabled = btnDisabled; document.getElementById('btn-up-spd').disabled = btnDisabled; 
+        } 
+        
+        function buyUpgrade(statType) { if(gameData.player.gold >= GAME_CONFIG.economy.techUpgradeCost) { gameData.player.gold -= GAME_CONFIG.economy.techUpgradeCost; let t = currentUpgTarget; if(statType === 'hp') { gameData.player.upg[t].hpLv++; applyHpUpgrade('player', t); } if(statType === 'atk') gameData.player.upg[t].atkLv++; if(statType === 'spd') gameData.player.upg[t].spdLv++; renderTechStats(); updateLiveButtonStats(); } } 
+        
+        function applyHpUpgrade(team, upgKey) { 
+            let ents = upgKey === 'hq' ? buildings.filter(b => b.team === team && b.type === 'Base') : units.filter(u => {
+                let uKey = ['carrier', 'leviathan', 'driller'].includes(u.unitType) ? 'spc' : u.unitType;
+                return u.team === team && uKey === upgKey;
+            }); 
+            ents.forEach(e => { 
+                let baseHp = upgKey === 'hq' ? bldStats.hq.hp : unitStats[e.unitType].hp; 
+                let metaHpKey = upgKey === 'spc' ? 'dreadnought_hp' : upgKey+'_hp';
+                let newMax = getEffectiveStat(baseHp, gameData[team].upg[upgKey].hpLv, team, metaHpKey); 
+                let diff = newMax - e.maxHp; e.maxHp = newMax; e.hp += diff; 
+            }); 
+        } 
+        
+        function updateLiveButtonStats() { 
+            let pUpg = gameData.player.upg; let u; 
+            u = 'interceptor'; document.getElementById('lbl-int').innerHTML = `HP:${Math.floor(getEffectiveStat(unitStats[u].hp, pUpg[u].hpLv, 'player', u+'_hp'))} | ATK:${Math.floor(getEffectiveStat(unitStats[u].atk, pUpg[u].atkLv, 'player', u+'_atk'))}<br>⏱ 10s`; 
+            u = 'corvette'; document.getElementById('lbl-cor').innerHTML = `HP:${Math.floor(getEffectiveStat(unitStats[u].hp, pUpg[u].hpLv, 'player', u+'_hp'))} | ATK:${Math.floor(getEffectiveStat(unitStats[u].atk, pUpg[u].atkLv, 'player', u+'_atk'))}<br>⏱ 15s`; 
+            u = 'repairer'; document.getElementById('lbl-rep').innerHTML = `HP:${Math.floor(getEffectiveStat(unitStats[u].hp, pUpg[u].hpLv, 'player', u+'_hp'))} | HỒI:${Math.floor(getEffectiveStat(unitStats[u].atk, pUpg[u].atkLv, 'player', u+'_atk'))}<br>⏱ 20s`; 
+            u = 'railgun'; document.getElementById('lbl-rai').innerHTML = `HP:${Math.floor(getEffectiveStat(unitStats[u].hp, pUpg[u].hpLv, 'player', u+'_hp'))} | ATK:${Math.floor(getEffectiveStat(unitStats[u].atk, pUpg[u].atkLv, 'player', u+'_atk'))}<br>⏱ 25s`; 
+            
+            let spc = getSpecialShipHelper(gameData.player.theme).type;
+            document.getElementById('lbl-spc').innerHTML = `HP:${Math.floor(getEffectiveStat(unitStats[spc].hp, pUpg['spc'].hpLv, 'player', 'dreadnought_hp'))} | ATK:${Math.floor(getEffectiveStat(unitStats[spc].atk, pUpg['spc'].atkLv, 'player', 'dreadnought_atk'))}<br>⏱ 60s`; 
+        }
+        
+        function playerToggleMovePlacement() { placementMode = placementMode === 'move_units' ? null : 'move_units'; updateUI(); } 
+        function playerToggleTurretPlacement() { let base = getBase('player'); let tCount = turrets.filter(t => t.team === 'player').length; if (base && gameData.player.gold >= GAME_CONFIG.economy.turretCost && tCount < GAME_CONFIG.economy.playerTurretLimit) { placementMode = placementMode === 'turret' ? null : 'turret'; updateUI(); } } 
+        
+        function playerUpgTurretInGame() { 
+            let currentLv = gameData.player.inGameTurretLv || 0;
+            if(gameData.player.gold >= GAME_CONFIG.economy.turretCost && currentLv < 5) { 
+                gameData.player.gold -= GAME_CONFIG.economy.turretCost; gameData.player.inGameTurretLv = currentLv + 1; updateUI(); 
+            } 
+        }
+
+        function playerUpgTurretHpInGame() {
+            let currentLv = gameData.player.inGameTurretHpLv || 0;
+            if (gameData.player.gold >= GAME_CONFIG.economy.turretCost && currentLv < 5) {
+                gameData.player.gold -= GAME_CONFIG.economy.turretCost;
+                gameData.player.inGameTurretHpLv = currentLv + 1;
+                turrets.filter(t => t.team === 'player').forEach(t => {
+                    let prevMax = t.maxHp;
+                    let metaHpLv = gameData.player.upg['turret'].hpLv;
+                    t.maxHp = getEffectiveStat(bldStats.turret.hp, metaHpLv, 'player', 'turret_hp') * (1 + (gameData.player.inGameTurretHpLv * GAME_CONFIG.scaling.turretHpUpgradeStep));
+                    t.hp += (t.maxHp - prevMax);
+                });
+                updateUI();
+            }
+        }
+        
+        function playerCommandAttack(targetTeam) { 
+            units.filter(u => u.team === 'player' && !u.isDrone).forEach(u => { 
+                u.unitState = targetTeam === 'IDLE' ? 'IDLE' : 'ATTACKING'; 
+                u.targetTeam = targetTeam; 
+                u.hasHoldPosition = false; 
+            }); 
+        } 
+        
+        function playerTrainMiner() { 
+            let base = getBase('player'); 
+            if (base && gameData.player.gold >= GAME_CONFIG.economy.minerCost) { 
+                gameData.player.gold -= GAME_CONFIG.economy.minerCost; 
+                base.queue.push({unitType: 'miner', buildTime: bldStats.miner.buildTime}); 
+            } 
+        } 
+        
+        function playerBuildOrUpgBarracks() { let base = getBase('player'); if (!base) return; let lv = gameData.player.barracksLevel; if (lv === 0 && gameData.player.gold >= GAME_CONFIG.economy.barracksCost) { gameData.player.gold -= GAME_CONFIG.economy.barracksCost; gameData.player.barracksLevel = 1; buildings.push(new Building(base.x + GAME_CONFIG.ai.barracksOffset.x, base.y + GAME_CONFIG.ai.barracksOffset.y, 'player', 'Barracks')); } else if (lv === 1 && gameData.player.gold >= GAME_CONFIG.economy.barracksUpgradeCosts[1]) { gameData.player.gold -= GAME_CONFIG.economy.barracksUpgradeCosts[1]; gameData.player.barracksLevel = 2; } else if (lv === 2 && gameData.player.gold >= GAME_CONFIG.economy.barracksUpgradeCosts[2]) { gameData.player.gold -= GAME_CONFIG.economy.barracksUpgradeCosts[2]; gameData.player.barracksLevel = 3; } updateUI(); } 
+        
+        function playerBuildReactor() { 
+            let base = getBase('player'); let rCount = reactors.filter(t => t.team === 'player').length; 
+            if (base && gameData.player.gold >= GAME_CONFIG.economy.reactorCost && rCount < GAME_CONFIG.economy.playerReactorLimit) { 
+                let allStructures = buildings.concat(reactors).concat(turrets);
+                let pos = getSafePos(base.x, base.y, 100, 200, allStructures, 60);
+                if (pos) {
+                    gameData.player.gold -= GAME_CONFIG.economy.reactorCost; 
+                    reactors.push(new Reactor(pos.x, pos.y, 'player')); 
+                } else {
+                    showToast("Hết chỗ trống quanh HQ!");
+                }
+            } 
+        } 
+        
+        function playerTrainUnit(type) { 
+            let b = buildings.find(b => b.team === 'player' && b.type === 'Barracks');
+            if (['carrier', 'leviathan', 'driller'].includes(type)) {
+                if (gameData.player.barracksLevel < 3) { showToast("Yêu cầu Nhà Lính Cấp 3!"); return; }
+            }
+            if (type === 'base_repairer') {
+                let dCount = units.filter(u => u.team === 'player' && u.unitType === 'base_repairer').length + (b ? b.queue.filter(q => q.unitType === 'base_repairer').length : 0);
+                if (dCount >= GAME_CONFIG.economy.droneLimit) { showToast("Đã đạt giới hạn 5 Drone!"); return; }
+            }
+            let cost = unitStats[type].cost; 
+            if (b && gameData.player.barracksLevel > 0 && gameData.player.gold >= cost) { 
+                gameData.player.gold -= cost; 
+                b.queue.push({unitType: type, buildTime: unitStats[type].buildTime}); 
+            } 
+        }
+
+        function playerTrainSpecial() {
+            let spc = getSpecialShipHelper(gameData.player.theme);
+            playerTrainUnit(spc.type);
+        }
+
+        function getTeamCombatUnits(team) {
+            return units.filter(u => u.team === team && u.unitType !== 'base_repairer' && !u.isDrone);
+        }
+
+        function getArmyPower(unitList, queued = []) {
+            let evalCfg = GAME_CONFIG.ai.evaluation;
+            let power = 0;
+            unitList.forEach(u => {
+                let s = unitStats[u.unitType] || unitStats.interceptor;
+                power += (Math.max(0, u.hp) / evalCfg.armyHpDivisor) + (s.atk * evalCfg.armyAtkWeight) + (s.range / evalCfg.armyRangeDivisor);
+            });
+            queued.forEach(q => {
+                let s = unitStats[q.unitType] || unitStats.interceptor;
+                power += ((s.hp / evalCfg.armyHpDivisor) + (s.atk * evalCfg.armyAtkWeight) + (s.range / evalCfg.armyRangeDivisor)) * evalCfg.queuedPowerMult;
+            });
+            return power;
+        }
+
+        function getThreatNearBase(team, radius = GAME_CONFIG.ai.evaluation.ownBaseThreatRadius) {
+            let base = getBase(team);
+            if (!base) return 0;
+            return units.filter(u => u.team !== team && !u.isDrone && !u.markedForDeletion && Math.hypot(u.x - base.x, u.y - base.y) <= radius).length;
+        }
+
+        function chooseAITarget(team, bData, base, style) {
+            let evalCfg = GAME_CONFIG.ai.evaluation;
+            if (bData.targetTeam && getBase(bData.targetTeam) && Math.random() > GAME_CONFIG.ai.targetSwitchChance) return bData.targetTeam;
+            let candidates = ALL_TEAMS.filter(t => t !== team && getBase(t));
+            if (candidates.length === 0) return null;
+            let bestTeam = candidates[0];
+            let bestScore = -Infinity;
+            candidates.forEach(enemyTeam => {
+                let enemyBase = getBase(enemyTeam);
+                let distance = Math.hypot(enemyBase.x - base.x, enemyBase.y - base.y);
+                let enemyTurrets = turrets.filter(t => t.team === enemyTeam).length;
+                let enemyArmy = getTeamCombatUnits(enemyTeam).length;
+                let hpRatio = enemyBase.hp / enemyBase.maxHp;
+                let pressureOnUs = units.filter(u => u.team === enemyTeam && Math.hypot(u.x - base.x, u.y - base.y) < evalCfg.pressureRadius).length;
+                let score = 0;
+                score += (1 - hpRatio) * evalCfg.weakBaseWeight;
+                score += Math.max(0, evalCfg.closeTargetRange - distance) / evalCfg.closeTargetDivisor;
+                score -= enemyTurrets * (style === GAME_CONFIG.ai.styles.RUSH ? evalCfg.turretPenaltyRush : evalCfg.turretPenaltyDefault);
+                score -= enemyArmy * evalCfg.enemyArmyPenalty;
+                score += pressureOnUs * evalCfg.pressureWeight;
+                if (enemyTeam === 'player') score += evalCfg.playerBias;
+                if (score > bestScore) { bestScore = score; bestTeam = enemyTeam; }
+            });
+            return bestTeam;
+        }
+
+        function getRallyPoint(base, targetBase) {
+            if (!targetBase) return { x: base.x, y: base.y };
+            let dx = targetBase.x - base.x;
+            let dy = targetBase.y - base.y;
+            let dist = Math.hypot(dx, dy) || 1;
+            return {
+                x: base.x + (dx / dist) * GAME_CONFIG.ai.rallyDistanceFromBase,
+                y: base.y + (dy / dist) * GAME_CONFIG.ai.rallyDistanceFromBase
+            };
+        }
+
+        function rallyArmy(team, point, combatUnits) {
+            combatUnits.forEach((u, idx) => {
+                if (u.unitState === 'ATTACKING') return;
+                let spread = (idx % 6) * 22;
+                let angle = (idx * 2.4) % (Math.PI * 2);
+                u.unitState = 'MOVE_TO_POINT';
+                u.targetX = point.x + Math.cos(angle) * spread;
+                u.targetY = point.y + Math.sin(angle) * spread;
+                u.hasHoldPosition = false;
+            });
+        }
+
+        function orderArmyAttack(team, targetTeam, combatUnits) {
+            combatUnits.forEach(u => {
+                u.unitState = 'ATTACKING';
+                u.targetTeam = targetTeam;
+                u.hasHoldPosition = false;
+            });
+        }
+
+        function isBuildSpotClear(x, y, obstacles, clearDist) {
+            if (x < GAME_CONFIG.map.edgePadding || y < GAME_CONFIG.map.edgePadding || x > MAP_W - GAME_CONFIG.map.edgePadding || y > MAP_H - GAME_CONFIG.map.edgePadding) return false;
+            return !obstacles.some(o => Math.hypot(o.x - x, o.y - y) < clearDist);
+        }
+
+        function findSmartTurretPos(team, targetTeam) {
+            let base = getBase(team);
+            let targetBase = targetTeam ? getBase(targetTeam) : null;
+            if (!base) return null;
+            let obstacles = buildings.concat(reactors).concat(turrets);
+            let placement = GAME_CONFIG.ai.turretPlacement;
+            let baseAngle = targetBase ? Math.atan2(targetBase.y - base.y, targetBase.x - base.x) : Math.random() * Math.PI * 2;
+            let best = null;
+            let bestScore = -Infinity;
+            for (let i = 0; i < placement.attempts; i++) {
+                let angle = baseAngle + (Math.random() - 0.5) * Math.PI * placement.enemyBias;
+                let radius = placement.minR + Math.random() * (placement.maxR - placement.minR);
+                let x = base.x + Math.cos(angle) * radius;
+                let y = base.y + Math.sin(angle) * radius;
+                if (!isBuildSpotClear(x, y, obstacles, 55)) continue;
+                let score = 100 - Math.abs(radius - 230) * 0.25;
+                if (targetBase) score += Math.max(0, 1800 - Math.hypot(targetBase.x - x, targetBase.y - y)) / 28;
+                score -= turrets.filter(t => t.team === team).reduce((sum, t) => sum + Math.max(0, 150 - Math.hypot(t.x - x, t.y - y)) / 4, 0);
+                if (score > bestScore) { bestScore = score; best = { x, y }; }
+            }
+            return best || getSafePos(base.x, base.y, placement.minR, placement.maxR, obstacles, 55);
+        }
+
+        function findSmartReactorPos(team) {
+            let base = getBase(team);
+            if (!base) return null;
+            let cfg = GAME_CONFIG.ai.reactorPlacement;
+            return getSafePos(base.x, base.y, cfg.minR, cfg.maxR, buildings.concat(reactors).concat(turrets), 60);
+        }
+
+        function getAIUnitChoices(bData, styleCfg, aiCombatUnits) {
+            let choices = [];
+            styleCfg.unitMix.forEach(type => {
+                if ((type === 'repairer' || type === 'railgun') && bData.barracksLevel < 2) return;
+                choices.push(type);
+            });
+            if (bData.barracksLevel >= 1 && choices.length === 0) choices.push('interceptor', 'corvette');
+            if (bData.barracksLevel >= 2 && !aiCombatUnits.some(u => u.unitType === 'repairer')) choices.push('repairer');
+            if (bData.barracksLevel >= 3) choices.push(getSpecialShipHelper(bData.theme).type);
+            return choices;
+        }
+
+        function updateAllAI() {
+            ALL_TEAMS.forEach(team => {
+                if(team === 'player') return;
+                let base = getBase(team); if (!base) return; let bData = gameData[team];
+                
+                let barrack = buildings.find(b => b.team === team && b.type === 'Barracks');
+                let aiMiners = miners.filter(m => m.team === team).length + base.queue.filter(q => q.unitType === 'miner').length; 
+                let aiTurrets = turrets.filter(t => t.team === team).length;
+                let aiReactors = reactors.filter(t => t.team === team).length; 
+                
+                let aiCombatUnits = getTeamCombatUnits(team);
+                let aiCombatUnitsCount = aiCombatUnits.length + (barrack ? barrack.queue.filter(q => q.unitType !== 'base_repairer').length : 0);
+                let queuedCombat = barrack ? barrack.queue.filter(q => q.unitType !== 'base_repairer') : [];
+                let armyPower = getArmyPower(aiCombatUnits, queuedCombat);
+                
+                let aiDrones = units.filter(u => u.team === team && u.unitType === 'base_repairer').length + (barrack ? barrack.queue.filter(q => q.unitType === 'base_repairer').length : 0);
+                
+                let strat = bData.aiStrategy;
+                let styleCfg = GAME_CONFIG.ai.styles[strat] || GAME_CONFIG.ai.styles.FLEX;
+                bData.targetTeam = chooseAITarget(team, bData, base, styleCfg);
+                let targetBase = bData.targetTeam ? getBase(bData.targetTeam) : null;
+                
+                if (bData.aiState === 'GATHER') {
+                    if (targetBase) {
+                        bData.rallyPoint = getRallyPoint(base, targetBase);
+                        rallyArmy(team, bData.rallyPoint, aiCombatUnits);
+                    }
+                    if (targetBase && (aiCombatUnitsCount >= styleCfg.attackThreshold || armyPower >= styleCfg.minAttackPower || getThreatNearBase(team) >= 3)) { 
+                        bData.aiState = 'ATTACK';
+                        orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
+                    }
+                } else if (bData.aiState === 'ATTACK') {
+                    if (aiCombatUnitsCount <= styleCfg.retreatAt || !targetBase) { bData.aiState = 'GATHER'; } 
+                    else { orderArmyAttack(team, bData.targetTeam, aiCombatUnits); }
+                }
+                
+                if (bData.gold > GAME_CONFIG.economy.techUpgradeCost + 50 && Math.random() < GAME_CONFIG.ai.upgradeChance) {
+                    bData.gold -= GAME_CONFIG.economy.techUpgradeCost; let targets = ['interceptor', 'corvette', 'repairer', 'railgun', 'spc'];
+                    let t = targets[Math.floor(Math.random()*targets.length)]; let st = ['hpLv', 'atkLv', 'spdLv'][Math.floor(Math.random()*3)];
+                    bData.upg[t][st]++; if(st === 'hpLv') applyHpUpgrade(team, t);
+                }
+                
+                if (aiMiners < styleCfg.miners && bData.gold >= GAME_CONFIG.economy.minerCost && base.queue.length < 2) { bData.gold -= GAME_CONFIG.economy.minerCost; base.queue.push({unitType: 'miner', buildTime: bldStats.miner.buildTime}); return; } 
+                else if (bData.barracksLevel === 0 && bData.gold >= GAME_CONFIG.economy.barracksCost) {
+                    bData.gold -= GAME_CONFIG.economy.barracksCost; bData.barracksLevel = 1;
+                    let bPos = getSafePos(base.x, base.y, 180, 260, buildings.concat(reactors).concat(turrets), 70) || { x: base.x + GAME_CONFIG.ai.barracksOffset.x, y: base.y + GAME_CONFIG.ai.barracksOffset.y };
+                    buildings.push(new Building(bPos.x, bPos.y, team, 'Barracks')); return;
+                }
+                else if (bData.barracksLevel > 0) {
+                    
+                    let canUpgrade = (bData.barracksLevel < 3);
+                    let isSavingForUpgrade = false;
+                    if (canUpgrade) {
+                        let nextCost = GAME_CONFIG.economy.barracksUpgradeCosts[bData.barracksLevel];
+                        if (strat === 'RUSH' && bData.barracksLevel < 2) {
+                            if (bData.gold >= nextCost) {
+                                bData.gold -= nextCost; bData.barracksLevel++; return;
+                            }
+                        } else {
+                            if (bData.gold >= nextCost && aiCombatUnitsCount >= styleCfg.upgradeBarracksAtArmy) {
+                                bData.gold -= nextCost; bData.barracksLevel++; return;
+                            } else if (aiCombatUnitsCount >= styleCfg.saveForUpgradeAtArmy) {
+                                isSavingForUpgrade = true; 
+                            }
+                        }
+                    }
+
+                    if (aiDrones < GAME_CONFIG.economy.droneLimit && bData.gold >= unitStats.base_repairer.cost && (aiTurrets > 0 || base.hp < base.maxHp * 0.8 || getThreatNearBase(team) > 0) && (!barrack || barrack.queue.length < styleCfg.maxQueue) && Math.random() < GAME_CONFIG.ai.droneChance) {
+                        bData.gold -= unitStats.base_repairer.cost;
+                        if (barrack) barrack.queue.push({unitType: 'base_repairer', buildTime: unitStats['base_repairer'].buildTime});
+                        return;
+                    }
+
+                    if (aiReactors < styleCfg.reactors && bData.gold >= GAME_CONFIG.economy.reactorCost && Math.random() < GAME_CONFIG.ai.reactorChance) { 
+                        let pos = findSmartReactorPos(team);
+                        if(pos) { bData.gold -= GAME_CONFIG.economy.reactorCost; reactors.push(new Reactor(pos.x, pos.y, team)); return; }
+                    }
+                    if (aiTurrets < styleCfg.turrets && bData.gold >= GAME_CONFIG.economy.turretCost && (Math.random() < GAME_CONFIG.ai.turretChance || getThreatNearBase(team) > 0)) { 
+                        let pos = findSmartTurretPos(team, bData.targetTeam);
+                        if(pos) { bData.gold -= GAME_CONFIG.economy.turretCost; turrets.push(new Turret(pos.x, pos.y, team)); return; }
+                    }
+
+                    if (isSavingForUpgrade || !barrack || barrack.queue.length >= styleCfg.maxQueue) return; 
+                    
+                    if (strat === 'RUSH' && aiCombatUnitsCount < styleCfg.attackThreshold && bData.gold >= unitStats.corvette.cost) {
+                        let choice = Math.random() > 0.5 ? 'interceptor' : 'corvette';
+                        if(bData.gold >= unitStats[choice].cost) {
+                            bData.gold -= unitStats[choice].cost;
+                            barrack.queue.push({unitType: choice, buildTime: unitStats[choice].buildTime});
+                            return;
+                        }
+                    }
+
+                    let choices = getAIUnitChoices(bData, styleCfg, aiCombatUnits);
+                    
+                    let affordable = choices.filter(c => bData.gold >= unitStats[c].cost);
+                    if (affordable.length > 0 && Math.random() < GAME_CONFIG.ai.trainChance) {
+                        let choice = affordable[Math.floor(Math.random() * affordable.length)]; bData.gold -= unitStats[choice].cost;
+                        barrack.queue.push({unitType: choice, buildTime: unitStats[choice].buildTime});
+                    }
+                }
+            });
+        }
+
+        function updateUI() {
+    // THUẬT TOÁN TÍNH SỨC MẠNH: (HP Công Trình + HP Lính) + (Sát Thương * 10)
+    function calculatePower(team) {
+        let power = 0;
+        buildings.forEach(b => { if (b.team === team) power += (b.hp + (b.type === 'Base' ? 40 : 0) * 10); });
+        turrets.forEach(t => { if (t.team === team) power += (t.hp + 4 * 10); });
+        reactors.forEach(r => { if (r.team === team) power += r.hp; });
+        units.forEach(u => { 
+            if (u.team === team) {
+                let uAtk = u.customAtk !== undefined ? u.customAtk : getEffectiveStat(unitStats[u.unitType].atk, (gameData[team].upg[u.unitType]||{atkLv:0}).atkLv, team, u.unitType+'_atk');
+                power += (u.hp + (uAtk || 0) * 10); 
+            } 
+        });
+        return Math.floor(power);
     }
-</script>
 
-<div id="screen-waiting" style="display:none;">
-    <h2 id="display-code"></h2>
-    <ul id="player-list"></ul>
-    <button id="btn-start" style="display:none;" onclick="handleStart()">BẮT ĐẦU TRÒ CHƠI</button>
-</div>
-</body>
-</html>
+    // UPDATE BẢNG SCOREBOARD (Hiển thị Vàng & ⚔️ Lực Chiến)
+    document.getElementById('gold-player').innerText = `${Math.floor(gameData.player.gold || 0)} | ⚔️${calculatePower('player')}`;
+    ['bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'].forEach(team => { 
+        let hasBase = getBase(team);
+        let text = hasBase ? `⚔️${calculatePower(team)}` : "OUT"; 
+        document.getElementById(`gold-${team}`).innerText = text; 
+    });
+
+    let pBase = getBase('player'); 
+// ... GIỮ NGUYÊN ĐOẠN Ở DƯỚI ...
+            
+            document.getElementById('reactor-count').innerText = `${reactors.filter(t => t.team === 'player').length}/${GAME_CONFIG.economy.playerReactorLimit} | +${GAME_CONFIG.economy.reactorGoldPerTick}v/s`;
+            
+            let btnTurret = document.getElementById('btn-turret'); let btnMove = document.getElementById('btn-move-cmd');
+            let btnUpgTurret = document.getElementById('btn-upg-turret'); let btnUpgTurretHp = document.getElementById('btn-upg-turret-hp');
+            
+            let tLv = gameData.player.inGameTurretLv || 0;
+            let tHpLv = gameData.player.inGameTurretHpLv || 0;
+            let metaHpLv = gameData.player.upg['turret'] ? gameData.player.upg['turret'].hpLv : 0;
+            let currentHp = Math.floor(getEffectiveStat(bldStats.turret.hp, metaHpLv, 'player', 'turret_hp') * (1 + (tHpLv * GAME_CONFIG.scaling.turretHpUpgradeStep)));
+            
+            if (tLv >= 5) { btnUpgTurret.innerHTML = `Công Trụ<br><span class="stat-text" style="color:#ffd700">MAX Lv.5</span>`; btnUpgTurret.disabled = true; } 
+            else { btnUpgTurret.innerHTML = `Công Trụ (${GAME_CONFIG.economy.turretCost}v)<br><span class="stat-text">Lv:${tLv}/5 | +${GAME_CONFIG.scaling.turretAtkFlatStep}ATK</span>`; btnUpgTurret.disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.turretCost); }
+
+            if (tHpLv >= 5) { btnUpgTurretHp.innerHTML = `Máu Trụ<br><span class="stat-text" style="color:#ffd700">MAX Lv.5</span>`; btnUpgTurretHp.disabled = true; } 
+            else { btnUpgTurretHp.innerHTML = `Máu Trụ (${GAME_CONFIG.economy.turretCost}v)<br><span class="stat-text">Lv:${tHpLv}/5 | +${Math.round(GAME_CONFIG.scaling.turretHpUpgradeStep * 100)}%HP</span>`; btnUpgTurretHp.disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.turretCost); }
+
+            if (placementMode === 'turret') { btnTurret.innerHTML = `HỦY TRỤ`; btnTurret.style.background = "rgba(255, 0, 0, 0.2)"; btnTurret.style.borderColor = "#ff4444"; } 
+            else { btnTurret.innerHTML = `Tháp Pháo (${GAME_CONFIG.economy.turretCost}v)<br><span class="stat-text">${turrets.filter(t => t.team === 'player').length}/${GAME_CONFIG.economy.playerTurretLimit} | HP:${currentHp}</span>`; btnTurret.style.background = ""; btnTurret.style.borderColor = ""; }
+            
+            if (placementMode === 'move_units') { btnMove.style.background = "rgba(255, 165, 0, 0.3)"; btnMove.style.borderColor = "#ffa500"; } else { btnMove.style.background = "rgba(0,255,255,0.05)"; btnMove.style.borderColor = "#00ffff"; }
+            document.getElementById('btn-miner').disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.minerCost); let lv = gameData.player.barracksLevel; let btnBuild = document.getElementById('btn-build');
+            if (lv === 0) { btnBuild.innerHTML = `Hạm Đội (${GAME_CONFIG.economy.barracksCost}v)<br><span class="stat-text">Mở C1</span>`; btnBuild.disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.barracksCost); } else if (lv === 1) { btnBuild.innerHTML = `Nâng Trạm (${GAME_CONFIG.economy.barracksUpgradeCosts[1]}v)<br><span class="stat-text">Mở C2</span>`; btnBuild.disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.barracksUpgradeCosts[1]); } else if (lv === 2) { btnBuild.innerHTML = `Nâng Trạm (${GAME_CONFIG.economy.barracksUpgradeCosts[2]}v)<br><span class="stat-text">Mở C3</span>`; btnBuild.disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.barracksUpgradeCosts[2]); } else { btnBuild.innerHTML = `Hạm Đội<br><span class="stat-text" style="color:#ffd700">MAX</span>`; btnBuild.disabled = true; }
+            if (placementMode !== 'turret') document.getElementById('btn-turret').disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.turretCost || turrets.filter(t => t.team === 'player').length >= GAME_CONFIG.economy.playerTurretLimit);
+            document.getElementById('btn-reactor').disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.reactorCost || reactors.filter(t => t.team === 'player').length >= GAME_CONFIG.economy.playerReactorLimit);
+            
+            let spcShip = getSpecialShipHelper(gameData.player.theme);
+
+            document.getElementById('name-int').innerHTML = lv >= 1 ? "Tiêm Kích (20v)" : "🔒 C1"; document.getElementById('name-cor').innerHTML = lv >= 1 ? "Tuần Tra (40v)" : "🔒 C1"; document.getElementById('name-rep').innerHTML = lv >= 2 ? "Hỗ Trợ (60v)" : "🔒 C2"; document.getElementById('name-rai').innerHTML = lv >= 2 ? "Pháo Kích (80v)" : "🔒 C2";
+            document.getElementById('name-spc').innerHTML = lv >= 3 ? `${spcShip.name} (250v)` : "🔒 C3";
+
+            document.getElementById('btn-tr-int').disabled = (lv < 1 || gameData.player.gold < unitStats.interceptor.cost); document.getElementById('btn-tr-cor').disabled = (lv < 1 || gameData.player.gold < unitStats.corvette.cost); document.getElementById('btn-tr-rep').disabled = (lv < 2 || gameData.player.gold < unitStats.repairer.cost); document.getElementById('btn-tr-rai').disabled = (lv < 2 || gameData.player.gold < unitStats.railgun.cost); 
+            document.getElementById('btn-tr-spc').disabled = (lv < 3 || gameData.player.gold < unitStats[spcShip.type].cost);
+
+            if (lv >= 3) {
+                document.getElementById('lbl-spc').innerHTML = `⏱ 60s`;
+            } else {
+                document.getElementById('lbl-spc').innerHTML = `Cần Nhà Lính Cấp 3`;
+            }
+
+            let b = buildings.find(b => b.team === 'player' && b.type === 'Barracks');
+            let dCount = units.filter(u => u.team === 'player' && u.unitType === 'base_repairer').length + (b ? b.queue.filter(q => q.unitType === 'base_repairer').length : 0);
+            let btnDrone = document.getElementById('btn-tr-bre');
+            if (dCount >= GAME_CONFIG.economy.droneLimit) {
+                btnDrone.innerHTML = `Drone Bảo Trì<br><span class="stat-text" style="color:#ffd700">MAX 5/5</span>`;
+                btnDrone.disabled = true;
+            } else {
+                btnDrone.innerHTML = `<span id="name-bre">Drone Bảo Trì (50v)</span><br><span class="stat-text">Sửa: 2HP/0.2s | ${dCount}/5<br>⏱ 8s</span>`;
+                btnDrone.disabled = (!pBase || gameData.player.gold < 50);
+            }
+
+            if(document.getElementById('upgrade-modal').style.display === 'flex') renderTechStats();
+        }
+
+        let frameCount = 0;
+        function gameLoop() {
+            if (gameOver || !gameStarted) return;
+            
+            let elapsed = Math.floor((Date.now() - matchStartTime) / 1000);
+            let m = Math.floor(elapsed / 60).toString().padStart(2, '0');
+            let s = (elapsed % 60).toString().padStart(2, '0');
+            document.getElementById('match-timer').innerText = `${m}:${s}`;
+
+            ctx.fillStyle = "#030308"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.save(); ctx.scale(dpr * zoom, dpr * zoom); ctx.translate(-cam.x, -cam.y); 
+            ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+            ctx.fillStyle = "white";
+            stars.forEach(s => { let vX = s.x - cam.x; let vY = s.y - cam.y; if(vX > -20 && vX < (window.innerWidth/zoom) + 20 && vY > -20 && vY < (window.innerHeight/zoom) + 20) { s.alpha += (Math.random() - 0.5) * 0.1; if(s.alpha < 0) s.alpha = 0; if(s.alpha > 1) s.alpha = 1; ctx.globalAlpha = s.alpha; ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI*2); ctx.fill(); } });
+            ctx.globalAlpha = 1.0; frameCount++; if (frameCount % GAME_CONFIG.ai.tickFrames === 0) updateAllAI();
+
+            let attackableEntities = buildings.concat(units).concat(miners).concat(turrets).concat(reactors);
+            resolveCollisions(attackableEntities.concat(mines));
+            mines = mines.filter(m => !m.markedForDeletion); 
+            if (mines.length < MAX_MINES && Math.random() < GAME_CONFIG.map.mineSpawnChance) { 
+                let pos = getSafePos(3000, 3000, 0, 2700, buildings.concat(mines), 100);
+                if(pos) mines.push(new GoldMine(pos.x, pos.y));
+            } 
+            mines.forEach(mine => mine.draw(ctx));
+
+            reactors.forEach(r => { r.update(); r.draw(ctx); }); miners.forEach(miner => { miner.update(mines, buildings); miner.draw(ctx); });
+            turrets.forEach(turret => { turret.update(attackableEntities); turret.draw(ctx); }); units.forEach(unit => { unit.update(attackableEntities, buildings); unit.draw(ctx); });
+            buildings.forEach(building => { building.update(attackableEntities); building.draw(ctx); });
+
+            explosions = explosions.filter(ex => ex.timer > 0);
+            explosions.forEach(ex => {
+                ex.timer--;
+                if (imgBoom && imgBoom.complete) {
+                    let size = 90; 
+                    ctx.drawImage(imgBoom, ex.x - size/2, ex.y - size/2, size, size);
+                }
+            });
+
+            if (placementMode === 'turret') { let pBase = getBase('player'); if (pBase) { ctx.beginPath(); ctx.arc(pBase.x, pBase.y, 450, 0, Math.PI * 2); ctx.fillStyle = "rgba(0, 255, 255, 0.03)"; ctx.fill(); ctx.strokeStyle = "rgba(0, 255, 255, 0.4)"; ctx.setLineDash([10, 10]); ctx.stroke(); ctx.setLineDash([]); } }
+            ctx.restore();
+
+            buildings = buildings.filter(b => !b.markedForDeletion); units = units.filter(u => !u.markedForDeletion);
+            miners = miners.filter(m => !m.markedForDeletion); turrets = turrets.filter(t => !t.markedForDeletion); reactors = reactors.filter(r => !r.markedForDeletion);
+            ALL_TEAMS.forEach(team => { let hasB = buildings.some(b => b.team === team && b.type === 'Barracks'); if (!hasB) gameData[team].barracksLevel = 0; });
+            updateUI();
+
+            let pBase = getBase('player'); let botBases = buildings.filter(b => b.team !== 'player' && b.type === 'Base').length;
+            
+            if (!pBase && !gameOver) {
+                gameOver = true; document.getElementById('game-over').style.display = 'flex';
+                let destroyedBases = 7 - botBases;
+                let reward = destroyedBases * 100;
+                profile.darkMatter += reward;
+                
+                let text = document.getElementById('result-text'); 
+                let rewardMsg = reward > 0 ? `<br>Tiêu diệt ${destroyedBases} Thế lực: +${reward} LÕI` : "";
+                text.innerHTML = `HẠM ĐỘI BỊ TIÊU DIỆT!${rewardMsg}<br><span style="font-size:12px; color:#aaa;">(Thời gian: ${m}:${s} - Số dư: ${profile.darkMatter} Lõi)</span>`; 
+                text.style.color = "#ff4444"; 
+                saveProfile(); 
+            } else if (botBases === 0 && !gameOver && frameCount > 30) {
+                gameOver = true; document.getElementById('game-over').style.display = 'flex';
+                profile.darkMatter += 1050; 
+                let text = document.getElementById('result-text'); 
+                text.innerHTML = `BÁ CHỦ TINH HỆ TẦNG ${profile.sector}!<br><span style="font-size:12px; color:#aaa;">TERRAN đã quét sạch các thế lực thù địch.<br>Thời gian: ${m}:${s}<br>+1050 LÕI HẮC THẠCH</span>`; text.style.color = "#00ffff";
+                profile.sector += 1; saveProfile();
+            }
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        renderCommandRoom();
+    </script>
+
+
+</body></html>
