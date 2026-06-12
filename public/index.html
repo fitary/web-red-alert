@@ -9,19 +9,16 @@
     <div id="ui-layer">
         </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+    
     <script src="network.js"></script>
     <script src="game.js"></script>
+    
     <script>
-        // Điều khiển luồng chính từ đây
-        Network.onInit((data) => {
-            // Hiển thị Waiting Screen
-            console.log("Đã vào phòng:", data.roomCode);
-        });
-
-        Network.onGameStart(() => {
-            console.log("Bắt đầu game...");
-            startRendering(); // Gọi hàm từ game.js
+        // Bây giờ bạn có thể gọi Network.createRoom() thoải mái
+        // mà không sợ lỗi "Network is not defined"
+        document.addEventListener('DOMContentLoaded', () => {
+             console.log("Game đã sẵn sàng!");
         });
     </script>
 </body>
