@@ -27,34 +27,45 @@
     <script src="network.js"></script>
     <script src="game.js"></script>
     <script>
-        // Các hàm xử lý UI
-        function handleCreate() {
-            const name = document.getElementById('username').value;
-            Network.createRoom(name);
+    let currentRoomCode = '';
+
+    // 1. Khi nhận được tín hiệu khởi tạo phòng (Tạo hoặc Join thành công)
+    Network.onInit((data) => {
+        document.getElementById('screen-login').style.display = 'none';
+        document.getElementById('screen-waiting').style.display = 'block';
+        
+        currentRoomCode = data.roomCode;
+        document.getElementById('display-code').innerText = "MÃ PHÒNG: " + data.roomCode;
+
+        // Nếu là Host, hiển thị nút Bắt đầu
+        if (data.role === 'host') {
+            document.getElementById('btn-start').style.display = 'block';
         }
         
-        function handleJoin() {
-            const name = document.getElementById('username').value;
-            const code = document.getElementById('joinCode').value;
-            Network.joinRoom(code, name);
-        }
+        renderPlayers(data.players);
+    });
 
-        // Lắng nghe sự kiện từ Network.js
-        Network.onInit((data) => {
-            document.getElementById('screen-login').style.display = 'none';
-            document.getElementById('screen-waiting').style.display = 'block';
-            document.getElementById('display-code').innerText = data.roomCode;
-            renderPlayers(data.players);
-        });
+    // 2. Cập nhật danh sách khi có người mới vào
+    Network.onRoomUpdate((players) => {
+        renderPlayers(players);
+    });
 
-        Network.onRoomUpdate((players) => {
-            renderPlayers(players);
-        });
+    // 3. Hàm render danh sách vào UI
+    function renderPlayers(players) {
+        const list = document.getElementById('player-list');
+        list.innerHTML = players.map(p => `<li>👤 ${p.name} ${p.id === socket.id ? '(Bạn)' : ''}</li>`).join('');
+    }
 
-        function renderPlayers(players) {
-            const list = document.getElementById('player-list');
-            list.innerHTML = players.map(p => `<li>${p.name}</li>`).join('');
-        }
-    </script>
+    // 4. Hàm bấm Bắt đầu (gọi từ nút bấm trong HTML)
+    function handleStart() {
+        Network.startGame(currentRoomCode);
+    }
+</script>
+
+<div id="screen-waiting" style="display:none;">
+    <h2 id="display-code"></h2>
+    <ul id="player-list"></ul>
+    <button id="btn-start" style="display:none;" onclick="handleStart()">BẮT ĐẦU TRÒ CHƠI</button>
+</div>
 </body>
 </html>
