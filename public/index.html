@@ -29,6 +29,14 @@
     <script src="network.js"></script>
     <script src="game.js"></script>
 <script>
+// Đảm bảo lắng nghe ở cấp độ root
+    socket.on('gameStarted', () => {
+        console.log("SERVER ĐÃ RA LỆNH BẮT ĐẦU!");
+        document.getElementById('screen-waiting').style.display = 'none';
+        document.getElementById('top-bar').style.display = 'flex';
+        startRendering(); 
+    });
+
     let currentRoomCode = '';
 
     // Hàm gọi từ HTML

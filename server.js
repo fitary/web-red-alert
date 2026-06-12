@@ -45,13 +45,18 @@ io.on('connection', (socket) => {
     });
 
     // 3. Bắt đầu Game
-    socket.on('startGame', (roomCode) => {
-        let room = rooms[roomCode];
-        if(room && room.host === socket.id) {
-            room.status = 'playing';
-            io.to(roomCode).emit('gameStarted');
-        }
-    });
+// Thay đoạn kiểm tra trong server.js thành:
+socket.on('startGame', (roomCode) => {
+    console.log("Server nhận lệnh START từ:", socket.id);
+    let room = rooms[roomCode];
+    if (room) {
+        room.status = 'playing';
+        console.log("Đang kích hoạt game cho phòng:", roomCode);
+        io.to(roomCode).emit('gameStarted'); 
+    } else {
+        console.log("LỖI: Không tìm thấy phòng!");
+    }
+});
 
     socket.on('disconnect', () => {
         console.log('Ngắt kết nối:', socket.id);
