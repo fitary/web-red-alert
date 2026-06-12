@@ -29,5 +29,6 @@ function gameLoop() {
 
 // Chạy game
 function startRendering() {
+    console.log("Engine bắt đầu vẽ...");
     requestAnimationFrame(gameLoop);
 }

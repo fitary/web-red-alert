@@ -9,6 +9,7 @@
 </style>
     </head>
 <body>
+
     <div id="ui-layer" style="position: absolute; z-index: 10;">
         <div id="screen-login">
             <input type="text" id="username" placeholder="Tên của bạn">
@@ -17,11 +18,13 @@
             <button onclick="handleJoin()">THAM GIA (GUEST)</button>
         </div>
         
-        <div id="screen-waiting" style="display:none;">
-            <h1 id="display-code" style="color: cyan;">----</h1>
-            <ul id="player-list"></ul>
-            <button id="btn-start" style="display:none;" onclick="handleStart()">BẮT ĐẦU TRÒ CHƠI</button>
-        </div>
+<div id="screen-waiting" class="screen" style="display: block;">
+    <div class="panel">
+        <h1 id="display-code" style="color: cyan;">----</h1>
+        <ul id="player-list"></ul>
+        <button id="btn-start" onclick="handleStart()" style="display:none;">BẮT ĐẦU TRÒ CHƠI</button>
+    </div>
+</div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -30,12 +33,18 @@
     <script src="game.js"></script>
 <script>
 // Đảm bảo lắng nghe ở cấp độ root
-    socket.on('gameStarted', () => {
-        console.log("SERVER ĐÃ RA LỆNH BẮT ĐẦU!");
-        document.getElementById('screen-waiting').style.display = 'none';
-        document.getElementById('top-bar').style.display = 'flex';
-        startRendering(); 
-    });
+socket.on('gameStarted', () => {
+    console.log("SERVER ĐÃ RA LỆNH BẮT ĐẦU!");
+    
+    // Kiểm tra xem phần tử có tồn tại không trước khi đổi style
+    let waitingScreen = document.getElementById('screen-waiting');
+    let topBar = document.getElementById('top-bar');
+    
+    if (waitingScreen) waitingScreen.style.display = 'none';
+    if (topBar) topBar.style.display = 'flex';
+    
+    startRendering(); // Gọi từ game.js
+});
 
     let currentRoomCode = '';
 
