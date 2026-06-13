@@ -242,18 +242,30 @@ let matchStartTime = 0;
         let serverGameState = null; // Dữ liệu Guest nhận từ Host để vẽ
         // ============================================
 // ======== LOGIC LOBBY & SOCKET LẮNG NGHE ========
-        function hostRoom() {
-            if(!socket) return showToast("Không thể kết nối Server!", "#ff4444");
-            let name = document.getElementById('playerName').value || 'Host';
+function hostRoom() {
+            console.log("👉 Đã kích hoạt lệnh bấm nút Tạo Phòng");
+            if (!socket || !socket.connected) {
+                showToast("Máy chủ Render đang khởi động hoặc chưa kết nối xong! Vui lòng đợi vài giây.", "#ff4444");
+                console.warn("⚠️ Socket chưa sẵn sàng hoặc socket.connected = false");
+                return;
+            }
+            let name = document.getElementById('playerName').value.trim() || 'Host';
             socket.emit('createRoom', name);
         }
 
         function joinRoom() {
-            if(!socket) return showToast("Không thể kết nối Server!", "#ff4444");
-            let code = document.getElementById('roomCodeInput').value.toUpperCase();
-            let name = document.getElementById('playerName').value || 'Guest';
-            if(code.length === 6) socket.emit('joinRoom', { code: code, username: name });
-            else showToast("Mã phòng phải có 6 ký tự!", "#ff4444");
+            console.log("👉 Đã kích hoạt lệnh bấm nút Tham Gia");
+            if (!socket || !socket.connected) {
+                showToast("Chưa kết nối được máy chủ!", "#ff4444");
+                return;
+            }
+            let code = document.getElementById('roomCodeInput').value.trim().toUpperCase();
+            let name = document.getElementById('playerName').value.trim() || 'Guest';
+            if (code.length === 6) {
+                socket.emit('joinRoom', { code: code, username: name });
+            } else {
+                showToast("Mã phòng phải có đúng 6 ký tự!", "#ff4444");
+            }
         }
 
         function playOffline() {
@@ -262,7 +274,19 @@ let matchStartTime = 0;
         }
 
 if (socket) {
+            // Theo dõi trạng thái kết nối trực tiếp trên màn hình Console
+            socket.on('connect', () => {
+                console.log('✅ Kết nối thành công tới Server Render! ID:', socket.id);
+                showToast("Kết nối Máy chủ thành công!", "#00ff00");
+            });
+
+            socket.on('connect_error', (err) => {
+                console.error('❌ Lỗi kết nối Server Render:', err.message);
+            });
+
+            // Sự kiện khởi tạo khi Tạo/Vào phòng thành công
             socket.on('init', (data) => {
+                console.log('📦 Nhận dữ liệu khởi tạo tự máy chủ:', data);
                 isOnline = true;
                 myRole = data.role;
                 myTeamId = data.team;
@@ -272,18 +296,44 @@ if (socket) {
                 document.getElementById('lobby-room').style.display = 'block';
                 document.getElementById('lbl-roomCode').innerText = myRoomCode;
                 
-                if(myRole === 'host') document.getElementById('btn-start-mp').style.display = 'block';
-                else document.getElementById('wait-msg').style.display = 'block';
+                if (myRole === 'host') {
+                    document.getElementById('btn-start-mp').style.display = 'block';
+                } else {
+                    document.getElementById('wait-msg').style.display = 'block';
+                }
                 
                 updatePlayerList(data.players);
-            }); // <--- QUAN TRỌNG: Phải đóng ngoặc của hàm init tại đây!
+            });
 
-            // Đặt ngang hàng với hàm init bên trên
+            // Lắng nghe dữ liệu đồng bộ map liên tục (Chỉ máy Guest xử lý)
             socket.on('updateGameState', (state) => {
                 if (myRole === 'guest') serverGameState = state;
             });
 
-            // ... (các sự kiện socket.on khác như roomUpdated, systemMsg nằm ở dưới đây) ...
+            // Cập nhật danh sách thành viên trong phòng chờ khi có người vào/ra
+            socket.on('roomUpdated', (players) => {
+                updatePlayerList(players);
+            });
+
+            // Nhận thông điệp hệ thống
+            socket.on('systemMsg', (msg) => {
+                showToast(msg, "#ffd700");
+            });
+
+            // Lệnh kích hoạt trận đấu từ máy chủ khi Host nhấn nút Start
+            socket.on('gameStarted', (humanPlayerTeams) => {
+                console.log('🎮 Trận đấu bắt đầu! Danh sách người thật:', humanPlayerTeams);
+                humanTeams = humanPlayerTeams;
+                document.getElementById('mp-lobby').style.display = 'none';
+                document.getElementById('command-room').style.display = 'none';
+                startGame();
+            });
+
+            // Xử lý giải tán phòng khi Host rớt mạng
+            socket.on('hostDisconnected', () => {
+                alert("Host đã ngắt kết nối hoặc hủy phòng!");
+                location.reload();
+            });
         }
 
             socket.on('roomUpdated', (players) => {
