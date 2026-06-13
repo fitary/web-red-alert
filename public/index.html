@@ -1452,12 +1452,48 @@ function updateUI() {
             }
 
             let myData = gameData[myTeamId]; let myBase = getBase(myTeamId);
-            document.getElementById('gold-player').innerText = `${Math.floor(myData.gold || 0)} | ⚔️${calculatePower(myTeamId)}`;
-            ['bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'].forEach(team => { 
-                let text = getBase(team) ? `⚔️${calculatePower(team)}` : "OUT"; 
-                document.getElementById(`gold-${team}`).innerText = text; 
+
+            // --- BẢNG SCOREBOARD ĐỘNG (FOG OF WAR TÀI NGUYÊN) ---
+            ['player', 'bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'].forEach(team => { 
+                let element = document.getElementById(`gold-${team}`);
+                if (!element) return;
+                
+                let isMe = (team === myTeamId);
+                let hasBase = getBase(team);
+                let text = "OUT";
+                
+                if (hasBase) {
+                    let power = calculatePower(team);
+                    // Phe của mình thì thấy Vàng + Lực chiến. Phe địch chỉ thấy Lực chiến.
+                    text = isMe ? `${Math.floor(gameData[team].gold || 0)}v | ⚔️${power}` : `⚔️${power}`;
+                }
+                
+                element.innerText = text;
+
+                // Xóa chữ "v" cứng trong HTML để không bị đè chữ
+                if (element.nextSibling && element.nextSibling.nodeType === 3) {
+                    element.nextSibling.nodeValue = ""; 
+                }
+
+                // Gắn nhãn nhận diện BẠN / HOST / GUEST
+                let parentDiv = element.parentNode;
+                if (parentDiv && parentDiv.childNodes[0]) {
+                    let baseName = parentDiv.childNodes[0].nodeValue
+                        .replace(' (BẠN)', '').replace(' (HOST)', '').replace(' (GUEST)', '').replace(':', '').trim();
+                        
+                    if (isMe) {
+                        parentDiv.childNodes[0].nodeValue = baseName + " (BẠN): ";
+                    } else if (team === 'player') {
+                        parentDiv.childNodes[0].nodeValue = baseName + " (HOST): ";
+                    } else if (typeof humanTeams !== 'undefined' && humanTeams.includes(team)) {
+                        parentDiv.childNodes[0].nodeValue = baseName + " (GUEST): ";
+                    } else {
+                        parentDiv.childNodes[0].nodeValue = baseName + ": ";
+                    }
+                }
             });
 
+            // --- CẬP NHẬT CÁC NÚT BẤM BÊN DƯỚI UI ---
             document.getElementById('reactor-count').innerText = `${reactors.filter(t => t.team === myTeamId).length}/${GAME_CONFIG.economy.playerReactorLimit} | +${GAME_CONFIG.economy.reactorGoldPerTick}v/s`;
             let btnTurret = document.getElementById('btn-turret'); let btnMove = document.getElementById('btn-move-cmd');
             let btnUpgTurret = document.getElementById('btn-upg-turret'); let btnUpgTurretHp = document.getElementById('btn-upg-turret-hp');
@@ -1496,70 +1532,6 @@ function updateUI() {
             let btnDrone = document.getElementById('btn-tr-bre');
             if (dCount >= GAME_CONFIG.economy.droneLimit) { btnDrone.innerHTML = `Drone Bảo Trì<br><span class="stat-text" style="color:#ffd700">MAX 5/5</span>`; btnDrone.disabled = true; } 
             else { btnDrone.innerHTML = `<span id="name-bre">Drone Bảo Trì (50v)</span><br><span class="stat-text">Sửa: 2HP/0.2s | ${dCount}/5<br>⏱ 8s</span>`; btnDrone.disabled = (!myBase || myData.gold < 50); }
-
-            if(document.getElementById('upgrade-modal').style.display === 'flex') renderTechStats();
-        }
-
-    // UPDATE BẢNG SCOREBOARD (Hiển thị Vàng & ⚔️ Lực Chiến)
-    document.getElementById('gold-player').innerText = `${Math.floor(gameData.player.gold || 0)} | ⚔️${calculatePower('player')}`;
-    ['bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'].forEach(team => { 
-        let hasBase = getBase(team);
-        let text = hasBase ? `⚔️${calculatePower(team)}` : "OUT"; 
-        document.getElementById(`gold-${team}`).innerText = text; 
-    });
-
-    let pBase = getBase('player'); 
-// ... GIỮ NGUYÊN ĐOẠN Ở DƯỚI ...
-            
-            document.getElementById('reactor-count').innerText = `${reactors.filter(t => t.team === 'player').length}/${GAME_CONFIG.economy.playerReactorLimit} | +${GAME_CONFIG.economy.reactorGoldPerTick}v/s`;
-            
-            let btnTurret = document.getElementById('btn-turret'); let btnMove = document.getElementById('btn-move-cmd');
-            let btnUpgTurret = document.getElementById('btn-upg-turret'); let btnUpgTurretHp = document.getElementById('btn-upg-turret-hp');
-            
-            let tLv = gameData.player.inGameTurretLv || 0;
-            let tHpLv = gameData.player.inGameTurretHpLv || 0;
-            let metaHpLv = gameData.player.upg['turret'] ? gameData.player.upg['turret'].hpLv : 0;
-            let currentHp = Math.floor(getEffectiveStat(bldStats.turret.hp, metaHpLv, 'player', 'turret_hp') * (1 + (tHpLv * GAME_CONFIG.scaling.turretHpUpgradeStep)));
-            
-            if (tLv >= 5) { btnUpgTurret.innerHTML = `Công Trụ<br><span class="stat-text" style="color:#ffd700">MAX Lv.5</span>`; btnUpgTurret.disabled = true; } 
-            else { btnUpgTurret.innerHTML = `Công Trụ (${GAME_CONFIG.economy.turretCost}v)<br><span class="stat-text">Lv:${tLv}/5 | +${GAME_CONFIG.scaling.turretAtkFlatStep}ATK</span>`; btnUpgTurret.disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.turretCost); }
-
-            if (tHpLv >= 5) { btnUpgTurretHp.innerHTML = `Máu Trụ<br><span class="stat-text" style="color:#ffd700">MAX Lv.5</span>`; btnUpgTurretHp.disabled = true; } 
-            else { btnUpgTurretHp.innerHTML = `Máu Trụ (${GAME_CONFIG.economy.turretCost}v)<br><span class="stat-text">Lv:${tHpLv}/5 | +${Math.round(GAME_CONFIG.scaling.turretHpUpgradeStep * 100)}%HP</span>`; btnUpgTurretHp.disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.turretCost); }
-
-            if (placementMode === 'turret') { btnTurret.innerHTML = `HỦY TRỤ`; btnTurret.style.background = "rgba(255, 0, 0, 0.2)"; btnTurret.style.borderColor = "#ff4444"; } 
-            else { btnTurret.innerHTML = `Tháp Pháo (${GAME_CONFIG.economy.turretCost}v)<br><span class="stat-text">${turrets.filter(t => t.team === 'player').length}/${GAME_CONFIG.economy.playerTurretLimit} | HP:${currentHp}</span>`; btnTurret.style.background = ""; btnTurret.style.borderColor = ""; }
-            
-            if (placementMode === 'move_units') { btnMove.style.background = "rgba(255, 165, 0, 0.3)"; btnMove.style.borderColor = "#ffa500"; } else { btnMove.style.background = "rgba(0,255,255,0.05)"; btnMove.style.borderColor = "#00ffff"; }
-            document.getElementById('btn-miner').disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.minerCost); let lv = gameData.player.barracksLevel; let btnBuild = document.getElementById('btn-build');
-            if (lv === 0) { btnBuild.innerHTML = `Hạm Đội (${GAME_CONFIG.economy.barracksCost}v)<br><span class="stat-text">Mở C1</span>`; btnBuild.disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.barracksCost); } else if (lv === 1) { btnBuild.innerHTML = `Nâng Trạm (${GAME_CONFIG.economy.barracksUpgradeCosts[1]}v)<br><span class="stat-text">Mở C2</span>`; btnBuild.disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.barracksUpgradeCosts[1]); } else if (lv === 2) { btnBuild.innerHTML = `Nâng Trạm (${GAME_CONFIG.economy.barracksUpgradeCosts[2]}v)<br><span class="stat-text">Mở C3</span>`; btnBuild.disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.barracksUpgradeCosts[2]); } else { btnBuild.innerHTML = `Hạm Đội<br><span class="stat-text" style="color:#ffd700">MAX</span>`; btnBuild.disabled = true; }
-            if (placementMode !== 'turret') document.getElementById('btn-turret').disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.turretCost || turrets.filter(t => t.team === 'player').length >= GAME_CONFIG.economy.playerTurretLimit);
-            document.getElementById('btn-reactor').disabled = (!pBase || gameData.player.gold < GAME_CONFIG.economy.reactorCost || reactors.filter(t => t.team === 'player').length >= GAME_CONFIG.economy.playerReactorLimit);
-            
-            let spcShip = getSpecialShipHelper(gameData.player.theme);
-
-            document.getElementById('name-int').innerHTML = lv >= 1 ? "Tiêm Kích (20v)" : "🔒 C1"; document.getElementById('name-cor').innerHTML = lv >= 1 ? "Tuần Tra (40v)" : "🔒 C1"; document.getElementById('name-rep').innerHTML = lv >= 2 ? "Hỗ Trợ (60v)" : "🔒 C2"; document.getElementById('name-rai').innerHTML = lv >= 2 ? "Pháo Kích (80v)" : "🔒 C2";
-            document.getElementById('name-spc').innerHTML = lv >= 3 ? `${spcShip.name} (250v)` : "🔒 C3";
-
-            document.getElementById('btn-tr-int').disabled = (lv < 1 || gameData.player.gold < unitStats.interceptor.cost); document.getElementById('btn-tr-cor').disabled = (lv < 1 || gameData.player.gold < unitStats.corvette.cost); document.getElementById('btn-tr-rep').disabled = (lv < 2 || gameData.player.gold < unitStats.repairer.cost); document.getElementById('btn-tr-rai').disabled = (lv < 2 || gameData.player.gold < unitStats.railgun.cost); 
-            document.getElementById('btn-tr-spc').disabled = (lv < 3 || gameData.player.gold < unitStats[spcShip.type].cost);
-
-            if (lv >= 3) {
-                document.getElementById('lbl-spc').innerHTML = `⏱ 60s`;
-            } else {
-                document.getElementById('lbl-spc').innerHTML = `Cần Nhà Lính Cấp 3`;
-            }
-
-            let b = buildings.find(b => b.team === 'player' && b.type === 'Barracks');
-            let dCount = units.filter(u => u.team === 'player' && u.unitType === 'base_repairer').length + (b ? b.queue.filter(q => q.unitType === 'base_repairer').length : 0);
-            let btnDrone = document.getElementById('btn-tr-bre');
-            if (dCount >= GAME_CONFIG.economy.droneLimit) {
-                btnDrone.innerHTML = `Drone Bảo Trì<br><span class="stat-text" style="color:#ffd700">MAX 5/5</span>`;
-                btnDrone.disabled = true;
-            } else {
-                btnDrone.innerHTML = `<span id="name-bre">Drone Bảo Trì (50v)</span><br><span class="stat-text">Sửa: 2HP/0.2s | ${dCount}/5<br>⏱ 8s</span>`;
-                btnDrone.disabled = (!pBase || gameData.player.gold < 50);
-            }
 
             if(document.getElementById('upgrade-modal').style.display === 'flex') renderTechStats();
         }
