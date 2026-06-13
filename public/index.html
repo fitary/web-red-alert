@@ -336,27 +336,6 @@ if (socket) {
             });
         }
 
-            socket.on('roomUpdated', (players) => {
-                updatePlayerList(players);
-            });
-
-            socket.on('systemMsg', (msg) => {
-                showToast(msg, "#ffd700");
-            });
-
-            socket.on('gameStarted', (humanPlayerTeams) => {
-                humanTeams = humanPlayerTeams;
-                document.getElementById('mp-lobby').style.display = 'none';
-                document.getElementById('command-room').style.display = 'none'; // Tắt cả Phòng Điều Hành cũ
-                startGame(); // Gọi hàm khởi tạo game gốc của bạn
-            });
-
-            socket.on('hostDisconnected', () => {
-                alert("Host đã ngắt kết nối! Phòng bị hủy.");
-                location.reload();
-            });
-        }
-
         function updatePlayerList(players) {
             let html = '';
             players.forEach(p => {
