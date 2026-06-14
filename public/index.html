@@ -1719,7 +1719,7 @@ function sendSyncData() {
             ALL_TEAMS.forEach(team => { let hasB = buildings.some(b => b.team === team && b.type === 'Barracks'); if (!hasB) gameData[team].barracksLevel = 0; });
 
             // Gửi dữ liệu đồng bộ
-            if (isOnline && frameCount % 2 === 0) sendSyncData();
+            if (isOnline && frameCount % 1 === 0) sendSyncData();
         }
 
         // --- HÀM GAMELOOP ĐƯỢC LÀM SẠCH ---
