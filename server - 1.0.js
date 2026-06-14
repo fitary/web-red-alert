@@ -27,10 +27,9 @@ io.on('connection', (socket) => {
     // 2. Tham gia phòng
     socket.on('joinRoom', (data) => {
         let room = rooms[data.code];
-        
-        // ĐÃ SỬA: Cho phép tối đa 8 người tham gia (1 Host + 7 Guest)
-        if (room && room.status === 'waiting' && room.players.length < 8) {
-            // Cấp phe cho Guest: bot1, bot2, bot3... bot7
+        // Cho phép tối đa 3 người tham gia (Host + 3 Guest = 4 người)
+        if (room && room.status === 'waiting' && room.players.length < 4) {
+            // Cấp phe cho Guest: bot1, bot2, bot3...
             const teamId = `bot${room.players.length}`; 
             const newPlayer = { id: socket.id, team: teamId, name: data.username || `Guest ${room.players.length}` };
             
@@ -40,13 +39,8 @@ io.on('connection', (socket) => {
             socket.emit('init', { role: 'guest', team: teamId, roomCode: data.code, players: room.players });
             io.to(data.code).emit('roomUpdated', room.players);
             io.to(data.code).emit('systemMsg', `⚡ ${newPlayer.name} đã tham gia!`);
-        } 
-        // ĐÃ THÊM: Báo lỗi cụ thể khi phòng đã full 8 người
-        else if (room && room.players.length >= 8) {
-            socket.emit('systemMsg', '❌ Phòng đã đầy (Tối đa 8 người)! Bạn không thể tham gia.');
-        } 
-        else {
-            socket.emit('systemMsg', '❌ Mã phòng sai hoặc trận đấu đã bắt đầu!');
+        } else {
+            socket.emit('systemMsg', '❌ Mã phòng sai hoặc phòng đã đầy/đang chơi!');
         }
     });
 

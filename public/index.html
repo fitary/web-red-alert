@@ -3,8 +3,8 @@
 <html lang="vi"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Galactic RTS: Balance &amp; AI Tactics v5</title>
-<title>Galactic RTS: Balance & AI Tactics v1.0</title>
+    <title>Galactic RTS: Balance & AI Tactics v1.0</title>
+	
     <script src="/socket.io/socket.io.js"></script>
     <style>
         /* KHÓA ZOOM TRÌNH DUYỆT TRÊN MOBILE */
@@ -101,11 +101,18 @@
 
             <div id="lobby-room" style="display: none;">
                 <p style="text-align: center; color: #aaa; font-size: 11px; margin-bottom: 5px;">MÃ PHÒNG CỦA BẠN:</p>
-                <h1 id="lbl-roomCode" style="text-align: center; color: #00ffff; font-size: 24px; letter-spacing: 2px; margin: 0 0 15px 0;">---</h1>
-                <div id="player-list" style="background: #050505; border: 1px solid #333; min-height: 100px; padding: 10px; margin-bottom: 15px; font-size: 11px; color: #ccc; max-height: 150px; overflow-y: auto;">
-                    <!-- Danh sách người chơi -->
+                
+                <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 5px;">
+                    <h1 id="lbl-roomCode" style="color: #00ffff; font-size: 24px; letter-spacing: 2px; margin: 0;">---</h1>
+                    <button class="btn" onclick="copyInviteLink()" style="width: auto; padding: 6px 10px; font-size: 9px; background: rgba(0,255,255,0.15); border-color: #00ffff; font-weight: bold;">🔗 COPY LINK</button>
                 </div>
-				<div id="host-settings" style="display: none; width: 100%; margin-bottom: 15px;">
+                
+                <p id="player-count-lbl" style="text-align: center; color: #ffcc00; font-size: 10px; margin-bottom: 15px; font-weight: bold;">SỐ LƯỢNG: 1/8</p>
+                
+                <div id="player-list" style="background: #050505; border: 1px solid #333; min-height: 100px; padding: 10px; margin-bottom: 15px; font-size: 11px; color: #ccc; max-height: 150px; overflow-y: auto;">
+                    </div>
+
+                <div id="host-settings" style="display: none; width: 100%; margin-bottom: 15px;">
                     <label style="color: #aaa; font-size: 10px; display: block; margin-bottom: 4px;">SỨC MẠNH BOT (CHỈ HOST THẤY):</label>
                     <select id="bot-buff-select" style="width: 100%; padding: 8px; background: #000; border: 1px solid #00ffff; color: #00ffff; font-size: 11px; outline: none; box-sizing: border-box;">
                         <option value="0">Giữ nguyên (Mặc định)</option>
@@ -114,7 +121,8 @@
                         <option value="0.5">+50% Máu & Sát thương</option>
                         <option value="1.0">+100% Cực khó (Hardcore)</option>
                     </select>
-                </div>				
+                </div>
+
                 <button id="btn-start-mp" class="btn" onclick="startMultiplayer()" style="width: 100%; display: none; background: rgba(0,255,255,0.1); border-color: #00ffff; color: #00ffff;">BẮT ĐẦU CHIẾN DỊCH</button>
                 <p id="wait-msg" style="text-align: center; color: #888; font-size: 10px; display: none;">Đang đợi Host bắt đầu...</p>
             </div>
@@ -252,8 +260,31 @@ let matchStartTime = 0;
         let serverGameState = null; // Dữ liệu Guest nhận từ Host để vẽ
 		let lobbyPlayers = []; // Lưu tên người thật
         let globalBotBuff = 0; // Lưu sức mạnh Bot
-        let guestCameraSet = false; // Cờ kiểm tra cam
+        let guestCameraSet = false; // Cờ kiểm tra cam		
         // ============================================
+// KIỂM TRA LINK CÓ CHỨA MÃ PHÒNG KHÔNG KHI VỪA VÀO WEB
+        window.addEventListener('DOMContentLoaded', (event) => {
+            let params = new URLSearchParams(window.location.search);
+            let codeFromUrl = params.get('code');
+            if (codeFromUrl) {
+                // Tự động điền mã phòng vào ô Tham Gia
+                document.getElementById('roomCodeInput').value = codeFromUrl.toUpperCase();
+                showToast("Đã tự động điền mã phòng từ link mời!", "#00ff00");
+            }
+        });
+// HÀM SAO CHÉP LINK MỜI
+        function copyInviteLink() {
+            // Lấy URL hiện tại (Bỏ đi các tham số cũ nếu có) và nối mã phòng vào
+            let base_url = window.location.origin + window.location.pathname;
+            let inviteLink = base_url + '?code=' + myRoomCode;
+            
+            navigator.clipboard.writeText(inviteLink).then(() => {
+                showToast("Đã copy link mời. Gửi cho bạn bè ngay!", "#00ff00");
+            }).catch(err => {
+                // Backup nếu trình duyệt chặn Clipboard API
+                prompt("Hãy copy link dưới đây:", inviteLink);
+            });
+        }
 // ======== LOGIC LOBBY & SOCKET LẮNG NGHE ========
 function hostRoom() {
             console.log("👉 Đã kích hoạt lệnh bấm nút Tạo Phòng");
@@ -409,13 +440,21 @@ function processAction(team, action, p = {}) {
             if (!isOnline || myRole === 'host') updateUI();
         }
 //------
-        function updatePlayerList(players) {
+function updatePlayerList(players) {
             let html = '';
             players.forEach(p => {
                 let roleTag = p.team === 'player' ? '<span style="color:#00ffff">[HOST]</span>' : '<span style="color:#aaa">[GUEST]</span>';
                 html += `<div style="padding: 4px 0; border-bottom: 1px dashed #222;">${roleTag} ${p.name} <span style="font-size:9px; color:#666;">(Phe: ${p.team})</span></div>`;
             });
             document.getElementById('player-list').innerHTML = html;
+
+            // Cập nhật bộ đếm hiển thị
+            let countLbl = document.getElementById('player-count-lbl');
+            if (countLbl) {
+                countLbl.innerText = `SỐ LƯỢNG: ${players.length}/8`;
+                if (players.length >= 8) countLbl.style.color = '#ff4444'; // Báo đỏ khi đầy phòng
+                else countLbl.style.color = '#ffcc00';
+            }
         }
 
 function startMultiplayer() {
