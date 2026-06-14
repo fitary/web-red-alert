@@ -1673,14 +1673,15 @@ function sendSyncData() {
                 checkGameOverStatus(m, s);
 
             } else {
-                // --- MÁY GUEST LẤY DATA (TỐI ƯU SIÊU NHẸ RAM, KHÔNG KHỞI TẠO NEW CLASS) ---
+                // --- MÁY GUEST LẤY DATA GHI ĐÈ LÊN MẢNG ---
+                // (Gọi lại lệnh 'new' để đảm bảo Unit tự tính toán đúng Kích thước, Màu phe và HP/MP)
                 if (serverGameState) {
-                    units = serverGameState.units.map(u => Object.assign(Object.create(CombatUnit.prototype), u));
-                    buildings = serverGameState.buildings.map(b => Object.assign(Object.create(Building.prototype), b));
-                    miners = serverGameState.miners.map(m => Object.assign(Object.create(Miner.prototype), m));
-                    turrets = serverGameState.turrets.map(t => Object.assign(Object.create(Turret.prototype), t));
-                    reactors = serverGameState.reactors.map(r => Object.assign(Object.create(Reactor.prototype), r));
-                    mines = serverGameState.mines.map(m => { let o = Object.create(GoldMine.prototype); o.x = m.x; o.y = m.y; o.capacity = m.capacity; o.radius = m.radius; return o; });
+                    units = serverGameState.units.map(u => { let o = new CombatUnit(u.x, u.y, u.team, u.unitType); Object.assign(o, u); return o; });
+                    buildings = serverGameState.buildings.map(b => { let o = new Building(b.x, b.y, b.team, b.type); Object.assign(o, b); return o; });
+                    miners = serverGameState.miners.map(m => { let o = new Miner(m.x, m.y, m.team); Object.assign(o, m); return o; });
+                    turrets = serverGameState.turrets.map(t => { let o = new Turret(t.x, t.y, t.team); Object.assign(o, t); return o; });
+                    reactors = serverGameState.reactors.map(r => { let o = new Reactor(r.x, r.y, r.team); Object.assign(o, r); return o; });
+                    mines = serverGameState.mines.map(m => { let o = new GoldMine(m.x, m.y); o.capacity = m.capacity; o.radius = m.radius; return o; });
                     explosions = serverGameState.explosions || [];
                     
                     // Đồng bộ Tiền Vàng và Tech hiển thị cho Guest
