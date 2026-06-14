@@ -105,6 +105,16 @@
                 <div id="player-list" style="background: #050505; border: 1px solid #333; min-height: 100px; padding: 10px; margin-bottom: 15px; font-size: 11px; color: #ccc; max-height: 150px; overflow-y: auto;">
                     <!-- Danh sách người chơi -->
                 </div>
+				<div id="host-settings" style="display: none; width: 100%; margin-bottom: 15px;">
+                    <label style="color: #aaa; font-size: 10px; display: block; margin-bottom: 4px;">SỨC MẠNH BOT (CHỈ HOST THẤY):</label>
+                    <select id="bot-buff-select" style="width: 100%; padding: 8px; background: #000; border: 1px solid #00ffff; color: #00ffff; font-size: 11px; outline: none; box-sizing: border-box;">
+                        <option value="0">Giữ nguyên (Mặc định)</option>
+                        <option value="0.1">+10% Máu & Sát thương</option>
+                        <option value="0.2">+20% Máu & Sát thương</option>
+                        <option value="0.5">+50% Máu & Sát thương</option>
+                        <option value="1.0">+100% Cực khó (Hardcore)</option>
+                    </select>
+                </div>				
                 <button id="btn-start-mp" class="btn" onclick="startMultiplayer()" style="width: 100%; display: none; background: rgba(0,255,255,0.1); border-color: #00ffff; color: #00ffff;">BẮT ĐẦU CHIẾN DỊCH</button>
                 <p id="wait-msg" style="text-align: center; color: #888; font-size: 10px; display: none;">Đang đợi Host bắt đầu...</p>
             </div>
@@ -240,6 +250,9 @@ let matchStartTime = 0;
         let myTeamId = 'player';  // Phe của bản thân trên máy này
         let humanTeams = [];      // Danh sách các phe có người thật điều khiển (để chặn AI phe đó)
         let serverGameState = null; // Dữ liệu Guest nhận từ Host để vẽ
+		let lobbyPlayers = []; // Lưu tên người thật
+        let globalBotBuff = 0; // Lưu sức mạnh Bot
+        let guestCameraSet = false; // Cờ kiểm tra cam
         // ============================================
 // ======== LOGIC LOBBY & SOCKET LẮNG NGHE ========
 function hostRoom() {
@@ -285,12 +298,13 @@ if (socket) {
             });
 
             // Sự kiện khởi tạo khi Tạo/Vào phòng thành công
-            socket.on('init', (data) => {
+socket.on('init', (data) => {
                 console.log('📦 Nhận dữ liệu khởi tạo tự máy chủ:', data);
                 isOnline = true;
                 myRole = data.role;
                 myTeamId = data.team;
                 myRoomCode = data.roomCode;
+                lobbyPlayers = data.players; // Lưu danh sách tên
                 
                 document.getElementById('lobby-menu').style.display = 'none';
                 document.getElementById('lobby-room').style.display = 'block';
@@ -298,6 +312,7 @@ if (socket) {
                 
                 if (myRole === 'host') {
                     document.getElementById('btn-start-mp').style.display = 'block';
+                    document.getElementById('host-settings').style.display = 'block'; // Mở menu cho Host
                 } else {
                     document.getElementById('wait-msg').style.display = 'block';
                 }
@@ -311,7 +326,8 @@ if (socket) {
             });
 
             // Cập nhật danh sách thành viên trong phòng chờ khi có người vào/ra
-            socket.on('roomUpdated', (players) => {
+			socket.on('roomUpdated', (players) => {
+                lobbyPlayers = players; // Liên tục cập nhật tên người mới vào
                 updatePlayerList(players);
             });
 
@@ -402,8 +418,14 @@ function processAction(team, action, p = {}) {
             document.getElementById('player-list').innerHTML = html;
         }
 
-        function startMultiplayer() {
-            if(myRole === 'host') socket.emit('startGame', myRoomCode);
+function startMultiplayer() {
+            if(myRole === 'host') {
+                // Lấy thông số buff bot Host vừa chọn
+                let buffElement = document.getElementById('bot-buff-select');
+                if(buffElement) globalBotBuff = parseFloat(buffElement.value);
+                
+                socket.emit('startGame', myRoomCode);
+            }
         }
         // ================================================
 
@@ -602,15 +624,22 @@ function processAction(team, action, p = {}) {
             }
         };
 
-        function getEffectiveStat(baseStat, inGameLevel, team, statKey) { 
-            let inGameMult = 1 + (inGameLevel * GAME_CONFIG.scaling.inGameUpgradeStep); let metaMult = 1.0;
-            if (team === 'player') { 
+function getEffectiveStat(baseStat, inGameLevel, team, statKey) { 
+            let inGameMult = 1 + (inGameLevel * GAME_CONFIG.scaling.inGameUpgradeStep); 
+            let metaMult = 1.0;
+            
+            // Nếu là người thật (Player hoặc Guest)
+            if (team === 'player' || (typeof humanTeams !== 'undefined' && humanTeams.includes(team))) { 
                 if (statKey) {
                     let mappedKey = statKey.replace(/^(carrier|leviathan|driller)_/, 'dreadnought_');
                     if (profile.upgrades[mappedKey]) metaMult = 1 + (profile.upgrades[mappedKey] * GAME_CONFIG.scaling.playerMetaStep); 
                 }
             } 
-            else { metaMult = 1 + ((profile.sector - 1) * GAME_CONFIG.scaling.sectorEnemyStep); }
+            // Nếu là BOT
+            else { 
+                let buff = typeof globalBotBuff !== 'undefined' ? globalBotBuff : 0;
+                metaMult = 1 + ((profile.sector - 1) * GAME_CONFIG.scaling.sectorEnemyStep) + buff; 
+            }
             return baseStat * inGameMult * metaMult; 
         }
 
@@ -1482,7 +1511,7 @@ function updateUI() {
 
             let myData = gameData[myTeamId]; let myBase = getBase(myTeamId);
 
-            // --- BẢNG SCOREBOARD ĐỘNG (FOG OF WAR TÀI NGUYÊN) ---
+// --- BẢNG SCOREBOARD ĐỘNG (THAY TÊN GUEST THÀNH TÊN THẬT) ---
             ['player', 'bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'].forEach(team => { 
                 let element = document.getElementById(`gold-${team}`);
                 if (!element) return;
@@ -1493,31 +1522,29 @@ function updateUI() {
                 
                 if (hasBase) {
                     let power = calculatePower(team);
-                    // Phe của mình thì thấy Vàng + Lực chiến. Phe địch chỉ thấy Lực chiến.
                     text = isMe ? `${Math.floor(gameData[team].gold || 0)}v | ⚔️${power}` : `⚔️${power}`;
                 }
                 
                 element.innerText = text;
 
-                // Xóa chữ "v" cứng trong HTML để không bị đè chữ
+                // Xóa rác node HTML
                 if (element.nextSibling && element.nextSibling.nodeType === 3) {
                     element.nextSibling.nodeValue = ""; 
                 }
 
-                // Gắn nhãn nhận diện BẠN / HOST / GUEST
+                // Chèn tên người chơi thay vì chữ (HOST)/(GUEST)
                 let parentDiv = element.parentNode;
                 if (parentDiv && parentDiv.childNodes[0]) {
-                    let baseName = parentDiv.childNodes[0].nodeValue
-                        .replace(' (BẠN)', '').replace(' (HOST)', '').replace(' (GUEST)', '').replace(':', '').trim();
-                        
+                    let factionNames = { 'player': 'TERRAN', 'bot1': 'TITAN', 'bot2': 'SWIFT', 'bot3': 'PSIONIC', 'bot4': 'NOVA', 'bot5': 'ABYSS', 'bot6': 'GALAXY', 'bot7': 'NEBULA' };
+                    let fName = factionNames[team] || 'UNKNOWN';
+                    
+                    let playerMatch = typeof lobbyPlayers !== 'undefined' ? lobbyPlayers.find(p => p.team === team) : null;
+                    let displayName = playerMatch ? playerMatch.name.toUpperCase() : fName;
+                    
                     if (isMe) {
-                        parentDiv.childNodes[0].nodeValue = baseName + " (BẠN): ";
-                    } else if (team === 'player') {
-                        parentDiv.childNodes[0].nodeValue = baseName + " (HOST): ";
-                    } else if (typeof humanTeams !== 'undefined' && humanTeams.includes(team)) {
-                        parentDiv.childNodes[0].nodeValue = baseName + " (GUEST): ";
+                        parentDiv.childNodes[0].nodeValue = displayName + " (BẠN): ";
                     } else {
-                        parentDiv.childNodes[0].nodeValue = baseName + ": ";
+                        parentDiv.childNodes[0].nodeValue = displayName + ": ";
                     }
                 }
             });
@@ -1653,7 +1680,7 @@ function sendSyncData() {
             ALL_TEAMS.forEach(team => { let hasB = buildings.some(b => b.team === team && b.type === 'Barracks'); if (!hasB) gameData[team].barracksLevel = 0; });
 
             // Gửi dữ liệu đồng bộ
-            if (isOnline && frameCount % 6 === 0) sendSyncData();
+            if (isOnline && frameCount % 2 === 0) sendSyncData();
         }
 
         // --- HÀM GAMELOOP ĐƯỢC LÀM SẠCH ---
@@ -1683,7 +1710,15 @@ function sendSyncData() {
                     reactors = serverGameState.reactors.map(r => { let o = new Reactor(r.x, r.y, r.team); Object.assign(o, r); return o; });
                     mines = serverGameState.mines.map(m => { let o = new GoldMine(m.x, m.y); o.capacity = m.capacity; o.radius = m.radius; return o; });
                     explosions = serverGameState.explosions || [];
-                    
+                    if (!guestCameraSet) {
+                        let myBase = buildings.find(b => b.team === myTeamId && b.type === 'Base');
+                        if (myBase) {
+                            cam.x = myBase.x - (window.innerWidth / zoom) / 2;
+                            cam.y = myBase.y - (window.innerHeight / zoom) / 2;
+                            clampCamera();
+                            guestCameraSet = true; // Đánh dấu đã kéo xong, không kéo lại nữa
+                        }
+                    }
                     ALL_TEAMS.forEach(team => {
                         if(gameData[team] && serverGameState.goldSync[team]) {
                             let sy = serverGameState.goldSync[team];
