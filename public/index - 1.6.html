@@ -779,7 +779,7 @@ function handleMapClick(cx, cy) {
                     let aspect = img.naturalHeight / img.naturalWidth;
                     let w = drawSize; let h = drawSize;
                     if (aspect > 1) { w = drawSize / aspect; } else if (aspect < 1) { h = drawSize * aspect; }
-                    ctx.save(); ctx.translate(this.x, this.y);  
+                    ctx.save(); ctx.translate(this.x, this.y); ctx.shadowColor = this.color; ctx.shadowBlur = 20; 
                     ctx.drawImage(img, -w/2, -h/2, w, h); ctx.restore(); 
                 } else { drawFactionShape(ctx, this.x, this.y, this.radius, this.sides, this.color, true); ctx.fillStyle = "#fff"; ctx.font = "12px Arial"; ctx.textAlign = "center"; ctx.fillText(this.type === 'Base' ? "HQ" : "FAC", this.x, this.y + 4); } 
                 if (this.type === 'Barracks') { let lv = gameData[this.team].barracksLevel; ctx.fillStyle = "#fff"; ctx.font = "bold 12px Arial"; ctx.textAlign = "center"; ctx.fillText("Lv." + lv, this.x, this.y - this.radius - 10); } 
@@ -797,7 +797,7 @@ function handleMapClick(cx, cy) {
                 }
             } 
         }
-        class Reactor extends Entity { constructor(x, y, team) { super(x, y, team, 'reactor', bldStats.reactor.hp); this.radius = bldStats.reactor.radius; this.tick = 0; } update() { this.tick++; if(this.tick >= GAME_CONFIG.economy.reactorTickFrames) { gameData[this.team].gold += GAME_CONFIG.economy.reactorGoldPerTick; this.tick = 0; } } draw(ctx) { let imgKey = gameData[this.team].theme + '_reactor'; let img = assets[imgKey]; let drawSize = this.radius * 2.2; if (img && img.complete && img.naturalWidth > 0) { ctx.save(); ctx.translate(this.x, this.y);  ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize); ctx.restore(); } else { ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fillStyle = "#002200"; ctx.fill(); ctx.strokeStyle = "#00ff00"; ctx.stroke(); } this.drawBarStats(ctx, this.radius + 12, this.radius*1.5); } }
+        class Reactor extends Entity { constructor(x, y, team) { super(x, y, team, 'reactor', bldStats.reactor.hp); this.radius = bldStats.reactor.radius; this.tick = 0; } update() { this.tick++; if(this.tick >= GAME_CONFIG.economy.reactorTickFrames) { gameData[this.team].gold += GAME_CONFIG.economy.reactorGoldPerTick; this.tick = 0; } } draw(ctx) { let imgKey = gameData[this.team].theme + '_reactor'; let img = assets[imgKey]; let drawSize = this.radius * 2.2; if (img && img.complete && img.naturalWidth > 0) { ctx.save(); ctx.translate(this.x, this.y); ctx.shadowColor = this.color; ctx.shadowBlur = 15; ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize); ctx.restore(); } else { ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fillStyle = "#002200"; ctx.fill(); ctx.strokeStyle = "#00ff00"; ctx.stroke(); } this.drawBarStats(ctx, this.radius + 12, this.radius*1.5); } }
         
         class Turret extends Entity { 
             constructor(x, y, team) { 
@@ -838,7 +838,7 @@ function handleMapClick(cx, cy) {
             draw(ctx) { 
                 let imgKey = gameData[this.team].theme + '_turret'; let img = assets[imgKey]; let drawSize = this.radius * 3.5; 
                 if (img && img.complete && img.naturalWidth > 0) { 
-                    ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle + Math.PI/2); ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize); ctx.restore(); 
+                    ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle + Math.PI/2); ctx.shadowColor = this.color; ctx.shadowBlur = 15; ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize); ctx.restore(); 
                 } else { 
                     ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle + Math.PI/2); drawFactionShape(ctx, 0, 0, this.radius, this.sides, this.color, true, 0); ctx.restore(); 
                 } 
@@ -850,7 +850,7 @@ function handleMapClick(cx, cy) {
             } 
         }
 
-        class Miner extends Entity { constructor(x, y, team) { super(x, y, team, 'miner', bldStats.miner.hp); this.radius = 10; this.state = 'moving_to_mine'; this.carryAmount = 0; this.maxCarry = 20; this.mineTimer = 0; this.targetMine = null; this.angle = -Math.PI/2; } update(minesArray, basesArray) { let spdLv = gameData[this.team].upg['miner'].spdLv; let speed = getEffectiveStat(bldStats.miner.spd, spdLv, this.team, 'miner_spd'); if (this.state === 'moving_to_mine' || this.state === 'mining') { if (!this.targetMine || this.targetMine.markedForDeletion) { let closestMine = null; let minDist = Infinity; minesArray.forEach(m => { let d = Math.hypot(m.x - this.x, m.y - this.y); if (d < minDist) { minDist = d; closestMine = m; } }); this.targetMine = closestMine; if (!this.targetMine) { this.state = 'returning'; return; } } let dx = this.targetMine.x - this.x; let dy = this.targetMine.y - this.y; let dist = Math.hypot(dx, dy); if (dist > this.radius + this.targetMine.radius + 20) { this.state = 'moving_to_mine'; this.angle = Math.atan2(dy, dx); this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; } else { this.state = 'mining'; this.mineTimer++; if (this.mineTimer >= 30) { let gathered = this.targetMine.extract(); if (gathered > 0) { this.carryAmount += gathered; this.mineTimer = 0; if (this.carryAmount >= this.maxCarry) this.state = 'returning'; } } } } else if (this.state === 'returning') { let myBase = basesArray.find(b => b.team === this.team && b.type === 'Base'); if (myBase) { let dx = myBase.x - this.x; let dy = myBase.y - this.y; let dist = Math.hypot(dx, dy); if (dist > this.radius + myBase.radius + 25) { this.angle = Math.atan2(dy, dx); this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; } else { gameData[this.team].gold += this.carryAmount; this.carryAmount = 0; this.targetMine = null; this.state = 'moving_to_mine'; } } } } draw(ctx) { let imgKey = gameData[this.team].theme + '_miner'; let img = assets[imgKey]; let drawSize = this.radius * 3.5; if (img && img.complete && img.naturalWidth > 0) { ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle + Math.PI/2);  ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize); ctx.restore(); } else { ctx.save(); ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fillStyle = "#222"; ctx.fill(); ctx.strokeStyle = this.color; ctx.stroke(); ctx.restore(); } this.drawBarStats(ctx, this.radius + 12, 20); } }
+        class Miner extends Entity { constructor(x, y, team) { super(x, y, team, 'miner', bldStats.miner.hp); this.radius = 10; this.state = 'moving_to_mine'; this.carryAmount = 0; this.maxCarry = 20; this.mineTimer = 0; this.targetMine = null; this.angle = -Math.PI/2; } update(minesArray, basesArray) { let spdLv = gameData[this.team].upg['miner'].spdLv; let speed = getEffectiveStat(bldStats.miner.spd, spdLv, this.team, 'miner_spd'); if (this.state === 'moving_to_mine' || this.state === 'mining') { if (!this.targetMine || this.targetMine.markedForDeletion) { let closestMine = null; let minDist = Infinity; minesArray.forEach(m => { let d = Math.hypot(m.x - this.x, m.y - this.y); if (d < minDist) { minDist = d; closestMine = m; } }); this.targetMine = closestMine; if (!this.targetMine) { this.state = 'returning'; return; } } let dx = this.targetMine.x - this.x; let dy = this.targetMine.y - this.y; let dist = Math.hypot(dx, dy); if (dist > this.radius + this.targetMine.radius + 20) { this.state = 'moving_to_mine'; this.angle = Math.atan2(dy, dx); this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; } else { this.state = 'mining'; this.mineTimer++; if (this.mineTimer >= 30) { let gathered = this.targetMine.extract(); if (gathered > 0) { this.carryAmount += gathered; this.mineTimer = 0; if (this.carryAmount >= this.maxCarry) this.state = 'returning'; } } } } else if (this.state === 'returning') { let myBase = basesArray.find(b => b.team === this.team && b.type === 'Base'); if (myBase) { let dx = myBase.x - this.x; let dy = myBase.y - this.y; let dist = Math.hypot(dx, dy); if (dist > this.radius + myBase.radius + 25) { this.angle = Math.atan2(dy, dx); this.x += (dx / dist) * speed; this.y += (dy / dist) * speed; } else { gameData[this.team].gold += this.carryAmount; this.carryAmount = 0; this.targetMine = null; this.state = 'moving_to_mine'; } } } } draw(ctx) { let imgKey = gameData[this.team].theme + '_miner'; let img = assets[imgKey]; let drawSize = this.radius * 3.5; if (img && img.complete && img.naturalWidth > 0) { ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle + Math.PI/2); ctx.shadowColor = this.color; ctx.shadowBlur = 15; ctx.drawImage(img, -drawSize/2, -drawSize/2, drawSize, drawSize); ctx.restore(); } else { ctx.save(); ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fillStyle = "#222"; ctx.fill(); ctx.strokeStyle = this.color; ctx.stroke(); ctx.restore(); } this.drawBarStats(ctx, this.radius + 12, 20); } }
         
         class CombatUnit extends Entity { 
             constructor(x, y, team, type) { 
@@ -1050,7 +1050,7 @@ function handleMapClick(cx, cy) {
                     let w = drawSize; let h = drawSize;
                     if (aspect > 1) { w = drawSize / aspect; } else if (aspect < 1) { h = drawSize * aspect; }
                     
-                    ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle + Math.PI/2);  
+                    ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle + Math.PI/2); ctx.shadowColor = this.color; ctx.shadowBlur = 15; 
                     ctx.drawImage(img, -w/2, -h/2, w, h); 
                     ctx.restore(); 
                 } else { 
@@ -1077,37 +1077,24 @@ function handleMapClick(cx, cy) {
         }
 
         // DRONE KHÔNG CÒN VA CHẠM (BAY XUYÊN TÀU MẸ VÀ CÁC TÀU KHÁC)
-        function resolveCollisions(entities) {
-            let len = entities.length;
-            for (let i = 0; i < len; i++) {
-                let e1 = entities[i];
-                if (e1.markedForDeletion || e1.isDrone) continue;
-                
-                for (let j = i + 1; j < len; j++) {
-                    let e2 = entities[j];
-                    if (e2.markedForDeletion || e2.isDrone) continue;
+        function resolveCollisions(entities) { 
+            for (let i = 0; i < entities.length; i++) { 
+                for (let j = i + 1; j < entities.length; j++) { 
+                    let e1 = entities[i]; let e2 = entities[j]; 
+                    if (e1.markedForDeletion || e2.markedForDeletion) continue; 
+                    if (e1.isDrone || e2.isDrone) continue; // Bỏ qua va chạm cho drone
                     
-                    let minDist = e1.radius + e2.radius + 15;
-                    
-                    // THUẬT TOÁN AABB: Dùng phép trừ đơn giản để lọc nhanh (Nhanh gấp 10 lần Math.hypot)
-                    let dx = e2.x - e1.x;
-                    if (dx > minDist || dx < -minDist) continue;
-                    
-                    let dy = e2.y - e1.y;
-                    if (dy > minDist || dy < -minDist) continue;
-                    
-                    // Ai qua được bộ lọc AABB mới dùng Math.hypot
-                    let dist = Math.hypot(dx, dy); 
-                    if (dist < minDist && dist > 0) {
-                        let overlap = minDist - dist; let nx = dx / dist; let ny = dy / dist;
-                        let m1 = (e1 instanceof Building || e1 instanceof GoldMine || e1 instanceof Turret || e1 instanceof Reactor) ? 0 : 0.5;
-                        let m2 = (e2 instanceof Building || e2 instanceof GoldMine || e2 instanceof Turret || e2 instanceof Reactor) ? 0 : 0.5;
-                        if(m1===0 && m2===0) continue; if(m1===0) m2 = 1; if(m2===0) m1 = 1;
-                        e1.x -= nx * overlap * m1 * 0.3; e1.y -= ny * overlap * m1 * 0.3;
-                        e2.x += nx * overlap * m2 * 0.3; e2.y += ny * overlap * m2 * 0.3;
-                    }
-                }
-            }
+                    let dx = e2.x - e1.x; let dy = e2.y - e1.y; let dist = Math.hypot(dx, dy); let minDist = e1.radius + e2.radius + 15; 
+                    if (dist < minDist && dist > 0) { 
+                        let overlap = minDist - dist; let nx = dx / dist; let ny = dy / dist; 
+                        let m1 = (e1 instanceof Building || e1 instanceof GoldMine || e1 instanceof Turret || e1 instanceof Reactor) ? 0 : 0.5; 
+                        let m2 = (e2 instanceof Building || e2 instanceof GoldMine || e2 instanceof Turret || e2 instanceof Reactor) ? 0 : 0.5; 
+                        if(m1===0 && m2===0) continue; if(m1===0) m2 = 1; if(m2===0) m1 = 1; 
+                        e1.x -= nx * overlap * m1 * 0.3; e1.y -= ny * overlap * m1 * 0.3; 
+                        e2.x += nx * overlap * m2 * 0.3; e2.y += ny * overlap * m2 * 0.3; 
+                    } 
+                } 
+            } 
         }
 
         function getValidSpawnPos(existingPositions) { let limit = 2000; while(limit > 0) { let x = 400 + Math.random() * (MAP_W - 800); let y = 400 + Math.random() * (MAP_H - 800); let valid = true; for(let pos of existingPositions) { if(Math.hypot(pos.x - x, pos.y - y) < 1400) { valid = false; break; } } if(valid) return {x, y}; limit--; } return {x: Math.random()*MAP_W, y: Math.random()*MAP_H}; }
@@ -1673,14 +1660,14 @@ function sendSyncData() {
                 checkGameOverStatus(m, s);
 
             } else {
-                // --- MÁY GUEST LẤY DATA (TỐI ƯU SIÊU NHẸ RAM, KHÔNG KHỞI TẠO NEW CLASS) ---
+                // --- MÁY GUEST CHỈ LẤY DATA GHI ĐÈ LÊN MẢNG ---
                 if (serverGameState) {
-                    units = serverGameState.units.map(u => Object.assign(Object.create(CombatUnit.prototype), u));
-                    buildings = serverGameState.buildings.map(b => Object.assign(Object.create(Building.prototype), b));
-                    miners = serverGameState.miners.map(m => Object.assign(Object.create(Miner.prototype), m));
-                    turrets = serverGameState.turrets.map(t => Object.assign(Object.create(Turret.prototype), t));
-                    reactors = serverGameState.reactors.map(r => Object.assign(Object.create(Reactor.prototype), r));
-                    mines = serverGameState.mines.map(m => { let o = Object.create(GoldMine.prototype); o.x = m.x; o.y = m.y; o.capacity = m.capacity; o.radius = m.radius; return o; });
+                    units = serverGameState.units.map(u => { let o = new CombatUnit(u.x, u.y, u.team, u.unitType); Object.assign(o, u); return o; });
+                    buildings = serverGameState.buildings.map(b => { let o = new Building(b.x, b.y, b.team, b.type); Object.assign(o, b); return o; });
+                    miners = serverGameState.miners.map(m => { let o = new Miner(m.x, m.y, m.team); Object.assign(o, m); return o; });
+                    turrets = serverGameState.turrets.map(t => { let o = new Turret(t.x, t.y, t.team); Object.assign(o, t); return o; });
+                    reactors = serverGameState.reactors.map(r => { let o = new Reactor(r.x, r.y, r.team); Object.assign(o, r); return o; });
+                    mines = serverGameState.mines.map(m => { let o = new GoldMine(m.x, m.y); o.capacity = m.capacity; o.radius = m.radius; return o; });
                     explosions = serverGameState.explosions || [];
                     
                     // Đồng bộ Tiền Vàng và Tech hiển thị cho Guest
@@ -1689,7 +1676,7 @@ function sendSyncData() {
                             let sy = serverGameState.goldSync[team];
                             gameData[team].gold = sy.gold;
                             gameData[team].barracksLevel = sy.barracksLevel;
-                            gameData[team].theme = sy.theme;
+                            gameData[team].theme = sy.theme; // <-- THÊM DÒNG NÀY: Đồng bộ Theme từ Host
                             gameData[team].inGameTurretLv = sy.inGameTurretLv;
                             gameData[team].inGameTurretHpLv = sy.inGameTurretHpLv;
                             if (sy.upg) gameData[team].upg = sy.upg;
