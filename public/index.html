@@ -242,6 +242,10 @@
             </div>
             <button class="btn" id="btn-move-cmd" onclick="playerToggleMovePlacement()" style="width: 100%; padding: 8px 0; color: #00ffff; border-color: #00ffff; background: rgba(0,255,255,0.05); font-size: 9px; margin-top: 4px;">📍 ĐIỂM TẬP KẾT HẠM ĐỘI</button>
 			<button class="btn" id="btn-select-cmd" onclick="playerToggleSelectMode()" style="width: 100%; padding: 8px 0; color: #aaa; border-color: #555; background: rgba(255,255,255,0.05); font-size: 9px; margin-top: 4px;">🖱️ QUÉT CHỌN QUÂN</button>
+			<div style="display: flex; gap: 4px; margin-top: 4px;">
+                <button class="btn" onclick="playerSelectAll()" style="color: #00ffff; border-color: #00ffff; background: rgba(0,255,255,0.1);">CHỌN TẤT CẢ</button>
+                <button class="btn" onclick="playerDeselectAll()" style="color: #ff4444; border-color: #ff4444; background: rgba(255,0,0,0.1);">BỎ CHỌN</button>
+            </div>
         </div>
     </div>
 
@@ -411,7 +415,12 @@ function processAction(team, action, p = {}) {
                 let b = buildings.find(b => b.team === team && b.type === 'Barracks');
                 if (b && tData.gold >= unitStats[p.type].cost) { tData.gold -= unitStats[p.type].cost; b.queue.push({unitType: p.type, buildTime: unitStats[p.type].buildTime}); }
             } else if (action === 'cmd_attack') {
-                units.filter(u => u.team === team && !u.isDrone).forEach(u => { u.unitState = p.target === 'IDLE' ? 'IDLE' : 'ATTACKING'; u.targetTeam = p.target; u.hasHoldPosition = false; });
+                // Chỉ ra lệnh cho lính có ID nằm trong mảng p.unitIds Guest gửi lên
+                units.filter(u => u.team === team && !u.isDrone && p.unitIds && p.unitIds.includes(u.id)).forEach(u => { 
+                    u.unitState = p.target === 'IDLE' ? 'IDLE' : 'ATTACKING'; 
+                    u.targetTeam = p.target; 
+                    u.hasHoldPosition = false; 
+                });
             } else if (action === 'place_turret' && base) {
                 if (tData.gold >= GAME_CONFIG.economy.turretCost && turrets.filter(t => t.team === team).length < GAME_CONFIG.economy.playerTurretLimit) {
                     tData.gold -= GAME_CONFIG.economy.turretCost; turrets.push(new Turret(p.x, p.y, team));
@@ -804,10 +813,10 @@ function handleMapClick(cx, cy) {
             } else if (placementMode === 'select') {
                 if (selectedUnitIds.length > 0) {
                     executeAction('move_group', { unitIds: selectedUnitIds, x: wx, y: wy });
-                    showToast("HẠM ĐỘI DI CHUYỂN!", "#00ffff");
-                    placementMode = null; updateUI();
+                    showToast("ĐANG DI CHUYỂN!", "#00ffff");
+                    // KHÔNG gán placementMode = null ở đây nữa để giữ quân
                 } else {
-                    placementMode = null; updateUI(); // Bấm ra ngoài để hủy chọn
+                    showToast("⚠️ Bạn chưa quét chọn quân nào!", "#ff4444");
                 }
                 return;
 			} else if (placementMode === 'move_units') {
@@ -1352,11 +1361,40 @@ function renderTechStats() {
         function playerBuildReactor() { executeAction('build_reactor'); } 
         function playerTrainUnit(type) { executeAction('train_unit', {type: type}); }
         function playerTrainSpecial() { let spc = getSpecialShipHelper(gameData[myTeamId].theme); executeAction('train_unit', {type: spc.type}); }
-        function playerCommandAttack(targetTeam) { executeAction('cmd_attack', {target: targetTeam}); } 
+        function playerCommandAttack(targetTeam) { 
+            if (selectedUnitIds.length === 0) {
+                showToast("⚠️ Vui lòng CHỌN QUÂN trước khi ra lệnh!", "#ff4444");
+                return;
+            }
+            // Gửi kèm danh sách ID những quân đang được chọn
+            executeAction('cmd_attack', { target: targetTeam, unitIds: selectedUnitIds }); 
+        }
         function playerUpgTurretInGame() { executeAction('upg_turret'); }
         function playerUpgTurretHpInGame() { executeAction('upg_turret_hp'); }
         function playerToggleMovePlacement() { placementMode = placementMode === 'move_units' ? null : 'move_units'; updateUI(); } 
 		function playerToggleSelectMode() { placementMode = placementMode === 'select' ? null : 'select'; updateUI(); }
+		function playerSelectAll() {
+            selectedUnitIds = [];
+            units.forEach(u => {
+                // Chỉ chọn quân của mình và bỏ qua xe mỏ
+                if (u.team === myTeamId && !u.isDrone) selectedUnitIds.push(u.id);
+            });
+            
+            if (selectedUnitIds.length > 0) {
+                placementMode = 'select'; // Tự động bật chế độ thao tác
+                showToast(`Đã gọi toàn bộ ${selectedUnitIds.length} chiến hạm!`, "#00ffff");
+                updateUI();
+            } else {
+                showToast("Chưa có hạm đội nào trên bản đồ!", "#ff4444");
+            }
+        }
+
+        function playerDeselectAll() {
+            selectedUnitIds = [];
+            placementMode = null;
+            showToast("Đã hủy chọn quân.", "#aaa");
+            updateUI();
+        }
         function playerToggleTurretPlacement() { 
             let myData = gameData[myTeamId]; let base = getBase(myTeamId); let tCount = turrets.filter(t => t.team === myTeamId).length;
             if (base && myData.gold >= GAME_CONFIG.economy.turretCost && tCount < GAME_CONFIG.economy.playerTurretLimit) { placementMode = placementMode === 'turret' ? null : 'turret'; updateUI(); } 
