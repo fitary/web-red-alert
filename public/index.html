@@ -1570,7 +1570,10 @@ function updateUI() {
 function sendSyncData() {
             let state = {
                 units: units.map(u => ({ x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: u.maxHp, team: u.team, unitType: u.unitType, angle: u.angle, isDrone: u.isDrone, laserDrawFrames: u.laserDrawFrames, laserTarget: u.laserTarget ? {x: u.laserTarget.x, y: u.laserTarget.y, markedForDeletion: false} : null })),
-                buildings: buildings.map(b => ({ x: Math.round(b.x), y: Math.round(b.y), hp: Math.round(b.hp), maxHp: b.maxHp, team: b.team, type: b.type, queue: b.queue, laserDrawFrames: b.laserDrawFrames, laserTarget: b.laserTarget ? {x: b.laserTarget.x, y: b.laserTarget.y, markedForDeletion: false} : null })),
+                
+                // ĐÃ THÊM 'buildTimer' ĐỂ GUEST THẤY THANH TIẾN TRÌNH XÂY QUÂN
+                buildings: buildings.map(b => ({ x: Math.round(b.x), y: Math.round(b.y), hp: Math.round(b.hp), maxHp: b.maxHp, team: b.team, type: b.type, queue: b.queue, buildTimer: b.buildTimer, laserDrawFrames: b.laserDrawFrames, laserTarget: b.laserTarget ? {x: b.laserTarget.x, y: b.laserTarget.y, markedForDeletion: false} : null })),
+                
                 miners: miners.map(m => ({ x: Math.round(m.x), y: Math.round(m.y), hp: Math.round(m.hp), maxHp: m.maxHp, team: m.team, angle: m.angle, carryAmount: m.carryAmount })),
                 turrets: turrets.map(t => ({ x: Math.round(t.x), y: Math.round(t.y), hp: Math.round(t.hp), maxHp: t.maxHp, team: t.team, angle: t.angle, laserDrawFrames: t.laserDrawFrames, laserTarget: t.laserTarget ? {x: t.laserTarget.x, y: t.laserTarget.y, markedForDeletion: false} : null })),
                 reactors: reactors.map(r => ({ x: Math.round(r.x), y: Math.round(r.y), hp: Math.round(r.hp), maxHp: r.maxHp, team: r.team })),
@@ -1582,7 +1585,7 @@ function sendSyncData() {
                 if(gameData[team]) state.goldSync[team] = { 
                     gold: gameData[team].gold, 
                     barracksLevel: gameData[team].barracksLevel,
-                    theme: gameData[team].theme, // <-- THÊM DÒNG NÀY ĐỂ BẮN THEME SANG GUEST
+                    theme: gameData[team].theme, 
                     inGameTurretLv: gameData[team].inGameTurretLv || 0,
                     inGameTurretHpLv: gameData[team].inGameTurretHpLv || 0,
                     upg: gameData[team].upg
@@ -1618,9 +1621,45 @@ function sendSyncData() {
             }
         }, 300);
 
+// --- HÀM MỚI: CHỈ XỬ LÝ TOÁN HỌC VÀ LOGIC (KHÔNG VẼ ĐỒ HỌA) ---
+        function runHostLogic() {
+            frameCount++; 
+            if (frameCount % GAME_CONFIG.ai.tickFrames === 0) updateAllAI();
+
+            let attackableEntities = buildings.concat(units).concat(miners).concat(turrets).concat(reactors);
+            resolveCollisions(attackableEntities.concat(mines));
+            
+            mines = mines.filter(m => !m.markedForDeletion); 
+            if (mines.length < MAX_MINES && Math.random() < GAME_CONFIG.map.mineSpawnChance) { 
+                let pos = getSafePos(3000, 3000, 0, 2700, buildings.concat(mines), 100);
+                if(pos) mines.push(new GoldMine(pos.x, pos.y));
+            } 
+            
+            reactors.forEach(r => r.update()); 
+            miners.forEach(miner => miner.update(mines, buildings));
+            turrets.forEach(turret => turret.update(attackableEntities)); 
+            units.forEach(unit => unit.update(attackableEntities, buildings));
+            buildings.forEach(building => building.update(attackableEntities));
+
+            explosions = explosions.filter(ex => ex.timer > 0);
+            explosions.forEach(ex => ex.timer--);
+
+            // Dọn rác
+            buildings = buildings.filter(b => !b.markedForDeletion); 
+            units = units.filter(u => !u.markedForDeletion);
+            miners = miners.filter(m => !m.markedForDeletion); 
+            turrets = turrets.filter(t => !t.markedForDeletion); 
+            reactors = reactors.filter(r => !r.markedForDeletion);
+            ALL_TEAMS.forEach(team => { let hasB = buildings.some(b => b.team === team && b.type === 'Barracks'); if (!hasB) gameData[team].barracksLevel = 0; });
+
+            // Gửi dữ liệu đồng bộ
+            if (isOnline && frameCount % 6 === 0) sendSyncData();
+        }
+
+        // --- HÀM GAMELOOP ĐƯỢC LÀM SẠCH ---
         function gameLoop() {
             if (gameOver || !gameStarted) return;
-            lastFrameTime = Date.now(); // Ghi đè thời gian tại đây
+            lastFrameTime = Date.now(); 
                         
             let elapsed = Math.floor((Date.now() - matchStartTime) / 1000);
             let m = Math.floor(elapsed / 60).toString().padStart(2, '0');
@@ -1631,50 +1670,11 @@ function sendSyncData() {
             ctx.save(); ctx.scale(dpr * zoom, dpr * zoom); ctx.translate(-cam.x, -cam.y); 
             ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
             
-            // ĐÃ XÓA ĐOẠN VẼ STARS Ở ĐÂY ĐỂ TỐI ƯU HIỆU NĂNG RENDER
-
-            // ==========================================
-            // PHÂN NHÁNH QUYỀN LỰC: HOST VÀ GUEST
-            // ==========================================
+            // KIỂM TRA PHÂN QUYỀN
             if (!isOnline || myRole === 'host') {
-                // --- MÁY HOST CHẠY TOÀN BỘ LOGIC ---
-                frameCount++; 
-                if (frameCount % GAME_CONFIG.ai.tickFrames === 0) updateAllAI();
-
-                let attackableEntities = buildings.concat(units).concat(miners).concat(turrets).concat(reactors);
-                resolveCollisions(attackableEntities.concat(mines));
-                
-                mines = mines.filter(m => !m.markedForDeletion); 
-                if (mines.length < MAX_MINES && Math.random() < GAME_CONFIG.map.mineSpawnChance) { 
-                    let pos = getSafePos(3000, 3000, 0, 2700, buildings.concat(mines), 100);
-                    if(pos) mines.push(new GoldMine(pos.x, pos.y));
-                } 
-                
-                reactors.forEach(r => r.update()); 
-                miners.forEach(miner => miner.update(mines, buildings));
-                turrets.forEach(turret => turret.update(attackableEntities)); 
-                units.forEach(unit => unit.update(attackableEntities, buildings));
-                buildings.forEach(building => building.update(attackableEntities));
-
-                explosions = explosions.filter(ex => ex.timer > 0);
-                explosions.forEach(ex => ex.timer--);
-
-                // Dọn rác
-                buildings = buildings.filter(b => !b.markedForDeletion); 
-                units = units.filter(u => !u.markedForDeletion);
-                miners = miners.filter(m => !m.markedForDeletion); 
-                turrets = turrets.filter(t => !t.markedForDeletion); 
-                reactors = reactors.filter(r => !r.markedForDeletion);
-                ALL_TEAMS.forEach(team => { let hasB = buildings.some(b => b.team === team && b.type === 'Barracks'); if (!hasB) gameData[team].barracksLevel = 0; });
-
-                // GỬI DATA CHO GUEST (Khoảng 10 khung hình 1 lần)
-                if (isOnline && frameCount % 6 === 0) sendSyncData();
-
+                runHostLogic(); // Gọi khối logic độc lập
                 checkGameOverStatus(m, s);
-
             } else {
-                // --- MÁY GUEST LẤY DATA GHI ĐÈ LÊN MẢNG ---
-                // (Gọi lại lệnh 'new' để đảm bảo Unit tự tính toán đúng Kích thước, Màu phe và HP/MP)
                 if (serverGameState) {
                     units = serverGameState.units.map(u => { let o = new CombatUnit(u.x, u.y, u.team, u.unitType); Object.assign(o, u); return o; });
                     buildings = serverGameState.buildings.map(b => { let o = new Building(b.x, b.y, b.team, b.type); Object.assign(o, b); return o; });
@@ -1684,13 +1684,12 @@ function sendSyncData() {
                     mines = serverGameState.mines.map(m => { let o = new GoldMine(m.x, m.y); o.capacity = m.capacity; o.radius = m.radius; return o; });
                     explosions = serverGameState.explosions || [];
                     
-                    // Đồng bộ Tiền Vàng và Tech hiển thị cho Guest
                     ALL_TEAMS.forEach(team => {
                         if(gameData[team] && serverGameState.goldSync[team]) {
                             let sy = serverGameState.goldSync[team];
                             gameData[team].gold = sy.gold;
                             gameData[team].barracksLevel = sy.barracksLevel;
-                            gameData[team].theme = sy.theme;
+                            gameData[team].theme = sy.theme; 
                             gameData[team].inGameTurretLv = sy.inGameTurretLv;
                             gameData[team].inGameTurretHpLv = sy.inGameTurretHpLv;
                             if (sy.upg) gameData[team].upg = sy.upg;
@@ -1699,9 +1698,7 @@ function sendSyncData() {
                 }
             }
 
-            // ==========================================
-            // CẢ HOST VÀ GUEST ĐỀU CHẠY HÀM VẼ (DRAW)
-            // ==========================================
+            // VẼ (DRAW)
             mines.forEach(mine => mine.draw(ctx));
             reactors.forEach(r => r.draw(ctx)); 
             miners.forEach(miner => miner.draw(ctx));
@@ -1715,26 +1712,48 @@ function sendSyncData() {
                 }
             });
 
-            if (placementMode === 'turret') { let pBase = getBase('player'); if (pBase) { ctx.beginPath(); ctx.arc(pBase.x, pBase.y, 450, 0, Math.PI * 2); ctx.fillStyle = "rgba(0, 255, 255, 0.03)"; ctx.fill(); ctx.strokeStyle = "rgba(0, 255, 255, 0.4)"; ctx.setLineDash([10, 10]); ctx.stroke(); ctx.setLineDash([]); } }
+            // ĐÃ SỬA 'player' THÀNH myTeamId ĐỂ GUEST THẤY ĐƯỢC BÁN KÍNH TRỤ KHI XÂY
+            if (placementMode === 'turret') { 
+                let pBase = getBase(myTeamId); 
+                if (pBase) { 
+                    ctx.beginPath(); ctx.arc(pBase.x, pBase.y, 450, 0, Math.PI * 2); 
+                    ctx.fillStyle = "rgba(0, 255, 255, 0.03)"; ctx.fill(); 
+                    ctx.strokeStyle = "rgba(0, 255, 255, 0.4)"; ctx.setLineDash([10, 10]); ctx.stroke(); ctx.setLineDash([]); 
+                } 
+            }
             
             ctx.restore();
-            // ĐÃ BỎ updateUI() khỏi đây để tránh việc thao tác DOM liên tục gây khựng hình
             animationId = requestAnimationFrame(gameLoop);
         }
 
         renderCommandRoom();
         
         // ===============================================
-        // NHỊP TIM PHỤ: CHỐNG ĐỨNG GAME KHI HOST ĐỔI TAB
+        // NHỊP TIM ĐỘC LẬP BẰNG WEB WORKER (ANTI-THROTTLE)
         // ===============================================
-        setInterval(() => {
+        // Giúp Server Host liên tục tính toán và Sync Data cho Guest ngay cả khi Host thu nhỏ trình duyệt
+        const workerCode = `
+            let t;
+            self.onmessage = function(e) {
+                if (e.data === 'start') t = setInterval(() => postMessage('tick'), 30);
+            };
+        `;
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        const bgWorker = new Worker(URL.createObjectURL(blob));
+
+        bgWorker.onmessage = () => {
             if (isOnline && myRole === 'host' && gameStarted && !gameOver) {
-                // Nếu quá 60ms mà trình duyệt không tự vẽ (bị ẩn tab) -> Ép chạy logic ngầm
+                // Nếu trình duyệt ngưng vẽ quá 60ms (bị ẩn tab)
                 if (Date.now() - lastFrameTime > 60) {
-                    gameLoop();
+                    lastFrameTime = Date.now(); // Reset lại cờ thời gian
+                    
+                    // TUYỆT ĐỐI KHÔNG GỌI gameLoop() Ở ĐÂY NỮA
+                    // CHỈ CHẠY LOGIC ĐỂ TRÁNH QUÁ TẢI CARD MÀN HÌNH
+                    runHostLogic(); 
                 }
             }
-        }, 30);
+        };
+        bgWorker.postMessage('start');
     </script>
 
 
