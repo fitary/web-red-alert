@@ -748,7 +748,7 @@ function getEffectiveStat(baseStat, inGameLevel, team, statKey) {
 
         function clampCamera() { let maxCamX = MAP_W - window.innerWidth / zoom; let maxCamY = MAP_H - window.innerHeight / zoom; if(cam.x < 0) cam.x = 0; if(cam.y < 0) cam.y = 0; if(maxCamX > 0 && cam.x > maxCamX) cam.x = maxCamX; if(maxCamY > 0 && cam.y > maxCamY) cam.y = maxCamY; }
 
-		canvas.addEventListener('mousedown', e => { isDragging = true; panStart = {x: e.clientX, y: e.clientY}; selectStart = {x: e.clientX, y: e.clientY}; selectEnd = {x: e.clientX, y: e.clientY}; dragDist = 0; });
+canvas.addEventListener('mousedown', e => { isDragging = true; panStart = {x: e.clientX, y: e.clientY}; selectStart = {x: e.clientX, y: e.clientY}; selectEnd = {x: e.clientX, y: e.clientY}; dragDist = 0; });
         window.addEventListener('mousemove', e => { 
             if(!isDragging) return; 
             selectEnd = {x: e.clientX, y: e.clientY};
@@ -759,27 +759,17 @@ function getEffectiveStat(baseStat, inGameLevel, team, statKey) {
                 panStart = {x: e.clientX, y: e.clientY}; clampCamera(); 
             }
         });
-		window.addEventListener('mouseup', e => { 
+        window.addEventListener('mouseup', e => { 
             if(isDragging) {
-                // NẾU ĐANG Ở CHẾ ĐỘ QUÉT QUÂN
-                if (placementMode === 'select') {
-                    if (dragDist > 15) {
-                        let wStartX = selectStart.x / zoom + cam.x; let wStartY = selectStart.y / zoom + cam.y;
-                        let wEndX = selectEnd.x / zoom + cam.x; let wEndY = selectEnd.y / zoom + cam.y;
-                        let minX = Math.min(wStartX, wEndX); let maxX = Math.max(wStartX, wEndX);
-                        let minY = Math.min(wStartY, wEndY); let maxY = Math.max(wStartY, wEndY);
-                        selectedUnitIds = [];
-                        units.forEach(u => { if (u.team === myTeamId && !u.isDrone && u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY) selectedUnitIds.push(u.id); });
-                        if(selectedUnitIds.length > 0) showToast(`Đã gom ${selectedUnitIds.length} hạm đội!`, "#00ffff");
-                    }
-                    // TỰ ĐỘNG THOÁT CHẾ ĐỘ QUÉT SAU KHI NHẢ CHUỘT
-                    placementMode = null; 
-                    updateUI(); 
-                } 
-                // NẾU KHÔNG QUÉT MÀ CHỈ LÀ CÚ CLICK NGẮN
-                else if (dragDist <= 15) { 
-                    handleMapClick(e.clientX, e.clientY); 
-                }
+                if (placementMode === 'select' && dragDist > 15) {
+                    let wStartX = selectStart.x / zoom + cam.x; let wStartY = selectStart.y / zoom + cam.y;
+                    let wEndX = selectEnd.x / zoom + cam.x; let wEndY = selectEnd.y / zoom + cam.y;
+                    let minX = Math.min(wStartX, wEndX); let maxX = Math.max(wStartX, wEndX);
+                    let minY = Math.min(wStartY, wEndY); let maxY = Math.max(wStartY, wEndY);
+                    selectedUnitIds = [];
+                    units.forEach(u => { if (u.team === myTeamId && !u.isDrone && u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY) selectedUnitIds.push(u.id); });
+                    if(selectedUnitIds.length > 0) showToast(`Đã gom ${selectedUnitIds.length} hạm đội!`, "#00ffff");
+                } else if (dragDist <= 15) { handleMapClick(e.clientX, e.clientY); }
             }
             isDragging = false; 
         });
@@ -795,32 +785,24 @@ function getEffectiveStat(baseStat, inGameLevel, team, statKey) {
                 panStart = {x: e.touches[0].clientX, y: e.touches[0].clientY}; clampCamera(); 
             }
         }, { passive: false });
-// TƯƠNG TỰ CHO CẢM ỨNG TRÊN ĐIỆN THOẠI
         window.addEventListener('touchend', e => { 
             if(isDragging) {
-                if (placementMode === 'select') {
-                    if (dragDist > 15) {
-                        let wStartX = selectStart.x / zoom + cam.x; let wStartY = selectStart.y / zoom + cam.y;
-                        let wEndX = selectEnd.x / zoom + cam.x; let wEndY = selectEnd.y / zoom + cam.y;
-                        let minX = Math.min(wStartX, wEndX); let maxX = Math.max(wStartX, wEndX);
-                        let minY = Math.min(wStartY, wEndY); let maxY = Math.max(wStartY, wEndY);
-                        selectedUnitIds = [];
-                        units.forEach(u => { if (u.team === myTeamId && !u.isDrone && u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY) selectedUnitIds.push(u.id); });
-                        if(selectedUnitIds.length > 0) showToast(`Đã gom ${selectedUnitIds.length} hạm đội!`, "#00ffff");
-                    }
-                    placementMode = null; 
-                    updateUI(); 
-                } 
-                else if (dragDist <= 15 && e.changedTouches.length > 0) { 
-                    handleMapClick(e.changedTouches[0].clientX, e.changedTouches[0].clientY); 
-                }
+                if (placementMode === 'select' && dragDist > 15) {
+                    let wStartX = selectStart.x / zoom + cam.x; let wStartY = selectStart.y / zoom + cam.y;
+                    let wEndX = selectEnd.x / zoom + cam.x; let wEndY = selectEnd.y / zoom + cam.y;
+                    let minX = Math.min(wStartX, wEndX); let maxX = Math.max(wStartX, wEndX);
+                    let minY = Math.min(wStartY, wEndY); let maxY = Math.max(wStartY, wEndY);
+                    selectedUnitIds = [];
+                    units.forEach(u => { if (u.team === myTeamId && !u.isDrone && u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY) selectedUnitIds.push(u.id); });
+                    if(selectedUnitIds.length > 0) showToast(`Đã gom ${selectedUnitIds.length} hạm đội!`, "#00ffff");
+                } else if (dragDist <= 15 && e.changedTouches.length > 0) { handleMapClick(e.changedTouches[0].clientX, e.changedTouches[0].clientY); }
             }
             isDragging = false; 
         }, { passive: false });
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-		function handleMapClick(cx, cy) {
+function handleMapClick(cx, cy) {
             let wx = cx / zoom + cam.x; let wy = cy / zoom + cam.y; let base = getBase(myTeamId); if (!base) return;
-            
             if (placementMode === 'turret') {
                 if (wx < GAME_CONFIG.map.edgePadding || wy < GAME_CONFIG.map.edgePadding || wx > MAP_W - GAME_CONFIG.map.edgePadding || wy > MAP_H - GAME_CONFIG.map.edgePadding) { showToast("Không thể xây sát rìa bản đồ!", "#ff4444"); return; }
                 let dist = Math.hypot(wx - base.x, wy - base.y); if (dist > 450) { showToast("Khoảng cách quá xa!", "#ff4444"); return; }
@@ -828,14 +810,17 @@ function getEffectiveStat(baseStat, inGameLevel, team, statKey) {
                 for (let o of allStructures) { if (Math.hypot(o.x - wx, o.y - wy) < 50) { overlap = true; break; } }
                 if (overlap) { showToast("Vị trí này quá chật!", "#ff4444"); return; }
                 executeAction('place_turret', {x: wx, y: wy}); placementMode = null; updateUI();
-            } 
-            // NẾU CÓ QUÂN ĐANG ĐƯỢC CHỌN -> CLICK TRÊN BẢN ĐỒ SẼ DI CHUYỂN
-            else if (selectedUnitIds.length > 0) {
-                executeAction('move_group', { unitIds: selectedUnitIds, x: wx, y: wy });
-                showToast("ĐANG DI CHUYỂN!", "#00ffff");
-                
-                // Tạo hiệu ứng Ping cho đẹp mắt tại điểm Click
-                explosions.push({ x: wx, y: wy, timer: 10, type: 'ping' }); 
+            } else if (placementMode === 'select') {
+                if (selectedUnitIds.length > 0) {
+                    executeAction('move_group', { unitIds: selectedUnitIds, x: wx, y: wy });
+                    showToast("ĐANG DI CHUYỂN!", "#00ffff");
+                    // KHÔNG gán placementMode = null ở đây nữa để giữ quân
+                } else {
+                    showToast("⚠️ Bạn chưa quét chọn quân nào!", "#ff4444");
+                }
+                return;
+			} else if (placementMode === 'move_units') {
+                executeAction('move_units', {x: wx, y: wy}); placementMode = null; showToast("TẬP KẾT HẠM ĐỘI!"); updateUI();
             }
         }
 
