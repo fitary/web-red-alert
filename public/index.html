@@ -241,6 +241,7 @@
                 <button class="btn btn-cmd-atk" onclick="playerCommandAttack(&#39;IDLE&#39;)" style="color: #00ffff; border-color: #00ffff; background: rgba(0,255,255,0.1);">VỀ THỦ</button>
             </div>
             <button class="btn" id="btn-move-cmd" onclick="playerToggleMovePlacement()" style="width: 100%; padding: 8px 0; color: #00ffff; border-color: #00ffff; background: rgba(0,255,255,0.05); font-size: 9px; margin-top: 4px;">📍 ĐIỂM TẬP KẾT HẠM ĐỘI</button>
+			<button class="btn" id="btn-select-cmd" onclick="playerToggleSelectMode()" style="width: 100%; padding: 8px 0; color: #aaa; border-color: #555; background: rgba(255,255,255,0.05); font-size: 9px; margin-top: 4px;">🖱️ QUÉT CHỌN QUÂN</button>
         </div>
     </div>
 
@@ -417,7 +418,15 @@ function processAction(team, action, p = {}) {
                 }
             } else if (action === 'move_units') {
                 units.filter(u => u.team === team && !u.isDrone).forEach(u => { u.unitState = 'MOVE_TO_POINT'; u.targetX = p.x; u.targetY = p.y; u.hasHoldPosition = false; });
-            } else if (action === 'upg_turret') {
+            } else if (action === 'move_group') {
+                units.forEach(u => {
+                    if (u.team === team && p.unitIds.includes(u.id)) {
+                        u.unitState = 'MOVE_TO_POINT';
+                        u.targetX = p.x; u.targetY = p.y;
+                        u.hasHoldPosition = false;
+                    }
+                });
+			} else if (action === 'upg_turret') {
                 let cLv = tData.inGameTurretLv || 0; if (tData.gold >= GAME_CONFIG.economy.turretCost && cLv < 5) { tData.gold -= GAME_CONFIG.economy.turretCost; tData.inGameTurretLv = cLv + 1; }
             } else if (action === 'upg_turret_hp') {
                 let cLv = tData.inGameTurretHpLv || 0; if (tData.gold >= GAME_CONFIG.economy.turretCost && cLv < 5) {
@@ -726,16 +735,61 @@ function getEffectiveStat(baseStat, inGameLevel, team, statKey) {
         function changeZoom(delta) { zoom += delta; if (zoom < 0.15) zoom = 0.15; if (zoom > 2.0) zoom = 2.0; clampCamera(); }
         
         const MAP_W = GAME_CONFIG.map.width; const MAP_H = GAME_CONFIG.map.height; let cam = { x: 0, y: 0 };
-        let isDragging = false; let dragStart = {x: 0, y: 0}; let dragDist = 0; let placementMode = null; 
+        let isDragging = false; let panStart = {x: 0, y: 0}; let selectStart = {x: 0, y: 0}; let selectEnd = {x: 0, y: 0}; let dragDist = 0; let placementMode = null; let selectedUnitIds = []; 
 
         function clampCamera() { let maxCamX = MAP_W - window.innerWidth / zoom; let maxCamY = MAP_H - window.innerHeight / zoom; if(cam.x < 0) cam.x = 0; if(cam.y < 0) cam.y = 0; if(maxCamX > 0 && cam.x > maxCamX) cam.x = maxCamX; if(maxCamY > 0 && cam.y > maxCamY) cam.y = maxCamY; }
 
-        canvas.addEventListener('mousedown', e => { isDragging = true; dragStart = {x: e.clientX, y: e.clientY}; dragDist = 0; });
-        window.addEventListener('mousemove', e => { if(!isDragging) return; let dx = e.clientX - dragStart.x; let dy = e.clientY - dragStart.y; dragDist += Math.abs(dx) + Math.abs(dy); cam.x -= dx / zoom; cam.y -= dy / zoom; dragStart = {x: e.clientX, y: e.clientY}; clampCamera(); });
-        window.addEventListener('mouseup', e => { if(isDragging && dragDist < 10) handleMapClick(e.clientX, e.clientY); isDragging = false; });
-        canvas.addEventListener('touchstart', e => { e.preventDefault(); isDragging = true; dragStart = {x: e.touches[0].clientX, y: e.touches[0].clientY}; dragDist = 0; }, { passive: false });
-        window.addEventListener('touchmove', e => { if(!isDragging) return; e.preventDefault(); let dx = e.touches[0].clientX - dragStart.x; let dy = e.touches[0].clientY - dragStart.y; dragDist += Math.abs(dx) + Math.abs(dy); cam.x -= dx / zoom; cam.y -= dy / zoom; dragStart = {x: e.touches[0].clientX, y: e.touches[0].clientY}; clampCamera(); }, { passive: false });
-        window.addEventListener('touchend', e => { if(isDragging && dragDist < 10 && e.changedTouches.length > 0) handleMapClick(e.changedTouches[0].clientX, e.changedTouches[0].clientY); isDragging = false; }, { passive: false });
+canvas.addEventListener('mousedown', e => { isDragging = true; panStart = {x: e.clientX, y: e.clientY}; selectStart = {x: e.clientX, y: e.clientY}; selectEnd = {x: e.clientX, y: e.clientY}; dragDist = 0; });
+        window.addEventListener('mousemove', e => { 
+            if(!isDragging) return; 
+            selectEnd = {x: e.clientX, y: e.clientY};
+            let dx = e.clientX - panStart.x; let dy = e.clientY - panStart.y; 
+            dragDist += Math.abs(dx) + Math.abs(dy); 
+            if (placementMode !== 'select') {
+                cam.x -= dx / zoom; cam.y -= dy / zoom; 
+                panStart = {x: e.clientX, y: e.clientY}; clampCamera(); 
+            }
+        });
+        window.addEventListener('mouseup', e => { 
+            if(isDragging) {
+                if (placementMode === 'select' && dragDist > 15) {
+                    let wStartX = selectStart.x / zoom + cam.x; let wStartY = selectStart.y / zoom + cam.y;
+                    let wEndX = selectEnd.x / zoom + cam.x; let wEndY = selectEnd.y / zoom + cam.y;
+                    let minX = Math.min(wStartX, wEndX); let maxX = Math.max(wStartX, wEndX);
+                    let minY = Math.min(wStartY, wEndY); let maxY = Math.max(wStartY, wEndY);
+                    selectedUnitIds = [];
+                    units.forEach(u => { if (u.team === myTeamId && !u.isDrone && u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY) selectedUnitIds.push(u.id); });
+                    if(selectedUnitIds.length > 0) showToast(`Đã gom ${selectedUnitIds.length} hạm đội!`, "#00ffff");
+                } else if (dragDist <= 15) { handleMapClick(e.clientX, e.clientY); }
+            }
+            isDragging = false; 
+        });
+
+        canvas.addEventListener('touchstart', e => { e.preventDefault(); isDragging = true; panStart = {x: e.touches[0].clientX, y: e.touches[0].clientY}; selectStart = {x: e.touches[0].clientX, y: e.touches[0].clientY}; selectEnd = {x: e.touches[0].clientX, y: e.touches[0].clientY}; dragDist = 0; }, { passive: false });
+        window.addEventListener('touchmove', e => { 
+            if(!isDragging) return; e.preventDefault(); 
+            selectEnd = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+            let dx = e.touches[0].clientX - panStart.x; let dy = e.touches[0].clientY - panStart.y; 
+            dragDist += Math.abs(dx) + Math.abs(dy); 
+            if (placementMode !== 'select') {
+                cam.x -= dx / zoom; cam.y -= dy / zoom; 
+                panStart = {x: e.touches[0].clientX, y: e.touches[0].clientY}; clampCamera(); 
+            }
+        }, { passive: false });
+        window.addEventListener('touchend', e => { 
+            if(isDragging) {
+                if (placementMode === 'select' && dragDist > 15) {
+                    let wStartX = selectStart.x / zoom + cam.x; let wStartY = selectStart.y / zoom + cam.y;
+                    let wEndX = selectEnd.x / zoom + cam.x; let wEndY = selectEnd.y / zoom + cam.y;
+                    let minX = Math.min(wStartX, wEndX); let maxX = Math.max(wStartX, wEndX);
+                    let minY = Math.min(wStartY, wEndY); let maxY = Math.max(wStartY, wEndY);
+                    selectedUnitIds = [];
+                    units.forEach(u => { if (u.team === myTeamId && !u.isDrone && u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY) selectedUnitIds.push(u.id); });
+                    if(selectedUnitIds.length > 0) showToast(`Đã gom ${selectedUnitIds.length} hạm đội!`, "#00ffff");
+                } else if (dragDist <= 15 && e.changedTouches.length > 0) { handleMapClick(e.changedTouches[0].clientX, e.changedTouches[0].clientY); }
+            }
+            isDragging = false; 
+        }, { passive: false });
         canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 function handleMapClick(cx, cy) {
@@ -747,7 +801,16 @@ function handleMapClick(cx, cy) {
                 for (let o of allStructures) { if (Math.hypot(o.x - wx, o.y - wy) < 50) { overlap = true; break; } }
                 if (overlap) { showToast("Vị trí này quá chật!", "#ff4444"); return; }
                 executeAction('place_turret', {x: wx, y: wy}); placementMode = null; updateUI();
-            } else if (placementMode === 'move_units') {
+            } else if (placementMode === 'select') {
+                if (selectedUnitIds.length > 0) {
+                    executeAction('move_group', { unitIds: selectedUnitIds, x: wx, y: wy });
+                    showToast("HẠM ĐỘI DI CHUYỂN!", "#00ffff");
+                    placementMode = null; updateUI();
+                } else {
+                    placementMode = null; updateUI(); // Bấm ra ngoài để hủy chọn
+                }
+                return;
+			} else if (placementMode === 'move_units') {
                 executeAction('move_units', {x: wx, y: wy}); placementMode = null; showToast("TẬP KẾT HẠM ĐỘI!"); updateUI();
             }
         }
@@ -925,6 +988,7 @@ function handleMapClick(cx, cy) {
                 let s = unitStats[type]; super(x, y, team, type, s.hp); this.unitType = type; this.unitState = 'IDLE'; this.targetTeam = null; this.radius = s.radius; this.range = s.range; this.aggroRange = s.aggro; this.attackCooldown = 0; this.mp = 0; this.maxMp = s.mpCost > 0 ? s.mpCost : 100; this.mpCost = s.mpCost; this.mpRegen = type === 'railgun' ? GAME_CONFIG.skills.railgun.mpRegen : (type === 'carrier' ? GAME_CONFIG.skills.carrier.mpRegen : GAME_CONFIG.skills.repairer.mpRegen); this.cooldownMax = s.cd; this.laserDrawFrames = 0; this.laserTarget = null; this.angle = -Math.PI / 2; this.targetX = null; this.targetY = null; 
                 this.heatLevel = 0; this.lastTarget = null;
                 this.drones = []; this.isDrone = false; this.motherShip = null; this.hasHoldPosition = false;
+				this.id = Math.random().toString(36).substring(2, 10);
             } 
             
             update(entities, basesArray) { 
@@ -1292,6 +1356,7 @@ function renderTechStats() {
         function playerUpgTurretInGame() { executeAction('upg_turret'); }
         function playerUpgTurretHpInGame() { executeAction('upg_turret_hp'); }
         function playerToggleMovePlacement() { placementMode = placementMode === 'move_units' ? null : 'move_units'; updateUI(); } 
+		function playerToggleSelectMode() { placementMode = placementMode === 'select' ? null : 'select'; updateUI(); }
         function playerToggleTurretPlacement() { 
             let myData = gameData[myTeamId]; let base = getBase(myTeamId); let tCount = turrets.filter(t => t.team === myTeamId).length;
             if (base && myData.gold >= GAME_CONFIG.economy.turretCost && tCount < GAME_CONFIG.economy.playerTurretLimit) { placementMode = placementMode === 'turret' ? null : 'turret'; updateUI(); } 
@@ -1603,7 +1668,11 @@ function updateUI() {
             if (placementMode === 'turret') { btnTurret.innerHTML = `HỦY TRỤ`; btnTurret.style.background = "rgba(255, 0, 0, 0.2)"; btnTurret.style.borderColor = "#ff4444"; } 
             else { btnTurret.innerHTML = `Tháp Pháo (${GAME_CONFIG.economy.turretCost}v)<br><span class="stat-text">${turrets.filter(t => t.team === myTeamId).length}/${GAME_CONFIG.economy.playerTurretLimit} | HP:${currentHp}</span>`; btnTurret.style.background = ""; btnTurret.style.borderColor = ""; }
             if (placementMode === 'move_units') { btnMove.style.background = "rgba(255, 165, 0, 0.3)"; btnMove.style.borderColor = "#ffa500"; } else { btnMove.style.background = "rgba(0,255,255,0.05)"; btnMove.style.borderColor = "#00ffff"; }
-            
+            let btnSelect = document.getElementById('btn-select-cmd');
+            if (btnSelect) {
+                if (placementMode === 'select') { btnSelect.style.background = "rgba(0, 255, 255, 0.3)"; btnSelect.style.borderColor = "#00ffff"; btnSelect.style.color = "#00ffff"; }
+                else { btnSelect.style.background = "rgba(255,255,255,0.05)"; btnSelect.style.borderColor = "#555"; btnSelect.style.color = "#aaa"; }
+            }
             document.getElementById('btn-miner').disabled = (!myBase || myData.gold < GAME_CONFIG.economy.minerCost); 
             let lv = myData.barracksLevel; let btnBuild = document.getElementById('btn-build');
             if (lv === 0) { btnBuild.innerHTML = `Hạm Đội (${GAME_CONFIG.economy.barracksCost}v)<br><span class="stat-text">Mở C1</span>`; btnBuild.disabled = (!myBase || myData.gold < GAME_CONFIG.economy.barracksCost); } 
@@ -1635,7 +1704,7 @@ function updateUI() {
 
 function sendSyncData() {
             let state = {
-                units: units.map(u => ({ x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: u.maxHp, team: u.team, unitType: u.unitType, angle: u.angle, isDrone: u.isDrone, laserDrawFrames: u.laserDrawFrames, laserTarget: u.laserTarget ? {x: u.laserTarget.x, y: u.laserTarget.y, markedForDeletion: false} : null })),
+                units: units.map(u => ({ id: u.id, x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: u.maxHp, team: u.team, unitType: u.unitType, angle: u.angle, isDrone: u.isDrone, laserDrawFrames: u.laserDrawFrames, laserTarget: u.laserTarget ? {x: u.laserTarget.x, y: u.laserTarget.y, markedForDeletion: false} : null })),
                 
                 // ĐÃ THÊM 'buildTimer' ĐỂ GUEST THẤY THANH TIẾN TRÌNH XÂY QUÂN
                 buildings: buildings.map(b => ({ x: Math.round(b.x), y: Math.round(b.y), hp: Math.round(b.hp), maxHp: b.maxHp, team: b.team, type: b.type, queue: b.queue, buildTimer: b.buildTimer, laserDrawFrames: b.laserDrawFrames, laserTarget: b.laserTarget ? {x: b.laserTarget.x, y: b.laserTarget.y, markedForDeletion: false} : null })),
@@ -1785,7 +1854,26 @@ function sendSyncData() {
                     let size = 90; ctx.drawImage(imgBoom, ex.x - size/2, ex.y - size/2, size, size);
                 }
             });
+			// Vẽ vòng sáng dưới chân lính được quét chọn
+            if (selectedUnitIds.length > 0) {
+                units.forEach(u => {
+                    if (selectedUnitIds.includes(u.id)) {
+                        ctx.beginPath(); ctx.arc(u.x, u.y, u.radius + 8, 0, Math.PI * 2);
+                        ctx.strokeStyle = "#00ffff"; ctx.lineWidth = 2;
+                        ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]);
+                    }
+                });
+            }
 
+            // Vẽ khung hình chữ nhật trong suốt lúc đang kéo thả
+            if (isDragging && placementMode === 'select') {
+                let wStart = { x: selectStart.x / zoom + cam.x, y: selectStart.y / zoom + cam.y };
+                let wEnd = { x: selectEnd.x / zoom + cam.x, y: selectEnd.y / zoom + cam.y };
+                ctx.fillStyle = "rgba(0, 255, 255, 0.15)"; ctx.strokeStyle = "#00ffff"; ctx.lineWidth = 1;
+                ctx.fillRect(wStart.x, wStart.y, wEnd.x - wStart.x, wEnd.y - wStart.y);
+                ctx.strokeRect(wStart.x, wStart.y, wEnd.x - wStart.x, wEnd.y - wStart.y);
+            }
+			
             // ĐÃ SỬA 'player' THÀNH myTeamId ĐỂ GUEST THẤY ĐƯỢC BÁN KÍNH TRỤ KHI XÂY
             if (placementMode === 'turret') { 
                 let pBase = getBase(myTeamId); 
