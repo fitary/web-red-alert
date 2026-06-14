@@ -1719,7 +1719,7 @@ function sendSyncData() {
             ALL_TEAMS.forEach(team => { let hasB = buildings.some(b => b.team === team && b.type === 'Barracks'); if (!hasB) gameData[team].barracksLevel = 0; });
 
             // Gửi dữ liệu đồng bộ
-            if (isOnline && frameCount % 1 === 0) sendSyncData();
+            if (isOnline && frameCount % 2 === 0) sendSyncData();
         }
 
         // --- HÀM GAMELOOP ĐƯỢC LÀM SẠCH ---
@@ -1802,14 +1802,16 @@ function sendSyncData() {
 
         renderCommandRoom();
         
+// ===============================================
+        // NHỊP TIM ĐỘC LẬP BẰNG WEB WORKER (ANTI-THROTTLE CHUẨN 60FPS)
         // ===============================================
-        // NHỊP TIM ĐỘC LẬP BẰNG WEB WORKER (ANTI-THROTTLE)
-        // ===============================================
-        // Giúp Server Host liên tục tính toán và Sync Data cho Guest ngay cả khi Host thu nhỏ trình duyệt
         const workerCode = `
             let t;
             self.onmessage = function(e) {
-                if (e.data === 'start') t = setInterval(() => postMessage('tick'), 30);
+                if (e.data === 'start') {
+                    // Ép nhịp tim đập 60 lần/giây (1000ms / 60 = ~16.6ms)
+                    t = setInterval(() => postMessage('tick'), 16);
+                }
             };
         `;
         const blob = new Blob([workerCode], { type: 'application/javascript' });
@@ -1817,13 +1819,18 @@ function sendSyncData() {
 
         bgWorker.onmessage = () => {
             if (isOnline && myRole === 'host' && gameStarted && !gameOver) {
-                // Nếu trình duyệt ngưng vẽ quá 60ms (bị ẩn tab)
-                if (Date.now() - lastFrameTime > 60) {
-                    lastFrameTime = Date.now(); // Reset lại cờ thời gian
+                
+                // Trình duyệt có API 'document.hidden' để biết chính xác tab có đang bị ẩn hay không
+                if (document.hidden) {
                     
-                    // TUYỆT ĐỐI KHÔNG GỌI gameLoop() Ở ĐÂY NỮA
-                    // CHỈ CHẠY LOGIC ĐỂ TRÁNH QUÁ TẢI CARD MÀN HÌNH
+                    // Host chạy logic ngầm với tốc độ 60 FPS y như lúc đang mở tab
                     runHostLogic(); 
+                    
+                    // Tính toán thời gian để kích hoạt End Game ngầm (Nếu 1 bên bị tiêu diệt lúc Host đang ẩn tab)
+                    let elapsed = Math.floor((Date.now() - matchStartTime) / 1000);
+                    let m = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                    let s = (elapsed % 60).toString().padStart(2, '0');
+                    checkGameOverStatus(m, s);
                 }
             }
         };
