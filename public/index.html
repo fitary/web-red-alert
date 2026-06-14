@@ -1108,20 +1108,29 @@ function handleMapClick(cx, cy) {
             let tList = ['std', 'sea', 'under'];
             function getRandomTheme() { return tList[Math.floor(Math.random() * tList.length)]; }
 
-            // CHỈ HOST MỚI TẠO GAME DATA ĐỂ ÉP ĐỒNG BỘ THEME
+            // BƯỚC SỬA LỖI MÀN HÌNH ĐEN CỦA GUEST: 
+            // Cả Host và Guest đều phải khởi tạo vỏ bọc gameData ban đầu.
+            // Host sẽ tạo data thực sự (Theme random), còn Guest tạo data mặc định chờ Host đè lên.
+            gameData = {
+                player: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#00ffff', sides: 3, theme: 'std', upg: createInitialUpgrades() },
+                bot1: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ff3333', sides: 4, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: 'std', upg: createInitialUpgrades(), rallyPoint: null },
+                bot2: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#33ff33', sides: 5, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: 'std', upg: createInitialUpgrades(), rallyPoint: null },
+                bot3: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#cc33ff', sides: 6, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: 'std', upg: createInitialUpgrades(), rallyPoint: null },
+                bot4: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ffcc00', sides: 7, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: 'std', upg: createInitialUpgrades(), rallyPoint: null },
+                bot5: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ff6600', sides: 8, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: 'std', upg: createInitialUpgrades(), rallyPoint: null },
+                bot6: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ff00ff', sides: 9, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: 'std', upg: createInitialUpgrades(), rallyPoint: null },
+                bot7: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ffffff', sides: 10, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: 'std', upg: createInitialUpgrades(), rallyPoint: null }
+            };
+
+            buildings = []; units = []; miners = []; turrets = []; reactors = []; mines = []; explosions = []; gameOver = false; frameCount = 0; let spawnPositions = []; 
+            matchStartTime = Date.now();
+
+            // CHỈ HOST MỚI CÓ QUYỀN CHỌN THEME VÀ SPAWN CÁC OBJECT TRÊN BẢN ĐỒ
             if (!isOnline || myRole === 'host') {
-                gameData = {
-                    player: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#00ffff', sides: 3, theme: getRandomTheme(), upg: createInitialUpgrades() },
-                    bot1: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ff3333', sides: 4, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
-                    bot2: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#33ff33', sides: 5, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
-                    bot3: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#cc33ff', sides: 6, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
-                    bot4: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ffcc00', sides: 7, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
-                    bot5: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ff6600', sides: 8, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
-                    bot6: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ff00ff', sides: 9, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null },
-                    bot7: { gold: GAME_CONFIG.economy.startGold, barracksLevel: 0, inGameTurretLv: 0, inGameTurretHpLv: 0, color: '#ffffff', sides: 10, aiState: 'GATHER', aiStrategy: strats[Math.floor(Math.random()*3)], targetTeam: null, theme: getRandomTheme(), upg: createInitialUpgrades(), rallyPoint: null }
-                };
-                buildings = []; units = []; miners = []; turrets = []; reactors = []; mines = []; explosions = []; gameOver = false; frameCount = 0; let spawnPositions = []; 
-                matchStartTime = Date.now();
+                
+                // Host random Theme đè lên giá trị mặc định
+                ALL_TEAMS.forEach(team => { gameData[team].theme = getRandomTheme(); });
+
                 ALL_TEAMS.forEach(team => { 
                     let pos = getValidSpawnPos(spawnPositions); spawnPositions.push(pos); buildings.push(new Building(pos.x, pos.y, team, 'Base')); 
                     mines.push(new GoldMine(pos.x + 400, pos.y - 400)); miners.push(new Miner(pos.x + 100, pos.y - 100, team)); 
@@ -1132,6 +1141,10 @@ function handleMapClick(cx, cy) {
                     let pos = getSafePos(3000, 3000, 0, 2700, buildings.concat(mines), 100);
                     if(pos) mines.push(new GoldMine(pos.x, pos.y));
                 }
+            } else {
+                // Guest chỉ cần reset Camera ra giữa map chờ dữ liệu
+                cam.x = (MAP_W - window.innerWidth / zoom)/2; 
+                cam.y = (MAP_H - window.innerHeight / zoom)/2;
             }
         }
 
