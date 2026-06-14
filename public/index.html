@@ -598,7 +598,7 @@ function startMultiplayer() {
                 mineSpawnChance: 0.05
             },
             economy: {
-                startGold: 100,
+                startGold: 1000,
                 minerCost: 50,
                 turretCost: 100,
                 reactorCost: 60,
@@ -637,7 +637,7 @@ function startMultiplayer() {
             },
             skills: {
                 carrier: { maxDrones: 10, droneHpMult: 0.8, droneAtkMult: 0.8, mpRegen: 0.5 },
-                leviathan: { splashRadius: 150, splashDamageMult: 0.5, explosionFrames: 10 },
+                leviathan: { splashRadius: 150, splashDamageMult: 0.5, explosionFrames: 60 },
                 driller: { heatMax: 12, heatDamageStep: 0.25 },
                 repairer: { mpRegen: 0.25 },
                 railgun: { mpRegen: 0.15 },
@@ -1630,7 +1630,37 @@ if(team === 'player') return;
                     }
 
                     if (isSavingForUpgrade || !barrack || barrack.queue.length >= styleCfg.maxQueue) return; 
-                    
+                    // --- CHỈ THỊ TỐI CAO: LUÔN LUÔN DUY TRÌ LỰC LƯỢNG C3 VÀ 3 TÀU HỖ TRỢ ---
+                    if (bData.barracksLevel >= 3) {
+                        let spcType = getSpecialShipHelper(bData.theme).type;
+                        
+                        // 1. KIỂM TRA VÀ DUY TRÌ LUÔN LUÔN CÓ 2 TÀU C3 (NẾU BỊ DIỆT SẼ MUA LẠI NGAY)
+                        let currentSpcCount = aiCombatUnits.filter(u => u.unitType === spcType).length 
+                                            + barrack.queue.filter(q => q.unitType === spcType).length;
+                        
+                        if (currentSpcCount < 2) {
+                            let spcCost = unitStats[spcType].cost;
+                            if (bData.gold >= spcCost) {
+                                bData.gold -= spcCost;
+                                barrack.queue.push({unitType: spcType, buildTime: unitStats[spcType].buildTime});
+                            }
+                            return; // Khóa ví tiền, ép đóng tàu C3 trước tiên
+                        }
+                        
+                        // 2. KHI ĐÃ ĐỦ 2 TÀU C3 -> TIẾP TỤC DUY TRÌ LUÔN LUÔN CÓ 3 TÀU HỖ TRỢ (REPAIRER) ĐỂ BẢO VỆ C3
+                        let currentRepCount = aiCombatUnits.filter(u => u.unitType === 'repairer').length 
+                                            + barrack.queue.filter(q => q.unitType === 'repairer').length;
+                        
+                        if (currentRepCount < 3) {
+                            let repCost = unitStats['repairer'].cost;
+                            if (bData.gold >= repCost) {
+                                bData.gold -= repCost;
+                                barrack.queue.push({unitType: 'repairer', buildTime: unitStats['repairer'].buildTime});
+                            }
+                            return; // Khóa ví tiền, ưu tiên đẻ đủ tàu bơm máu hộ tống C3
+                        }
+                    }
+					
                     if (strat === 'RUSH' && aiCombatUnitsCount < styleCfg.attackThreshold && bData.gold >= unitStats.corvette.cost) {
                         let choice = Math.random() > 0.5 ? 'interceptor' : 'corvette';
                         if(bData.gold >= unitStats[choice].cost) {
@@ -1901,12 +1931,38 @@ function sendSyncData() {
             turrets.forEach(turret => turret.draw(ctx)); 
             units.forEach(unit => unit.draw(ctx));
             buildings.forEach(building => building.draw(ctx));
-
+//LEVIATHAN
             explosions.forEach(ex => {
-                if (imgBoom && imgBoom.complete) {
-                    let size = 90; ctx.drawImage(imgBoom, ex.x - size/2, ex.y - size/2, size, size);
+                let maxTimer = 60; // 1 giây = 60 frames
+                let progress = 1 - (ex.timer / maxTimer); // Chạy từ 0.0 đến 1.0
+                let maxRadius = 150; // Bằng với tầm sát thương lan
+                
+                // Toán học: Giãn nở nhanh lúc đầu, chậm về sau (Ease Out Cubic)
+                let currentRadius = maxRadius * (1 - Math.pow(1 - progress, 3)); 
+                // Mờ chậm ở đầu, phai tắt hẳn ở cuối
+                let alpha = 1 - Math.pow(progress, 2); 
+
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                
+                // 1. Lõi Plasma (Chỉ lóe sáng ở 20% thời gian đầu)
+                if (progress < 0.2) {
+                    ctx.beginPath();
+                    ctx.arc(ex.x, ex.y, maxRadius * (0.2 - progress), 0, Math.PI * 2);
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fill();
                 }
+
+                // 2. Vòng sóng lan tỏa
+                ctx.beginPath();
+                ctx.arc(ex.x, ex.y, currentRadius, 0, Math.PI * 2);
+                ctx.lineWidth = 2 + (1 - progress) * 6; // Viền mỏng dần từ 8px xuống 2px
+                ctx.strokeStyle = "#00ffff";
+                ctx.stroke();
+
+                ctx.restore();
             });
+			
 			// Vẽ vòng sáng dưới chân lính được quét chọn
             if (selectedUnitIds.length > 0) {
                 units.forEach(u => {
