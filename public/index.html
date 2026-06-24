@@ -83,52 +83,67 @@
 </head>
 <body>
 <!-- GIAO DIỆN LOBBY MULTIPLAYER -->
-    <div id="mp-lobby" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(10, 10, 15, 0.98); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif;">
-        <div style="width: 300px; background: #111; border: 1px solid #444; padding: 20px; border-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
-            <h2 style="text-align: center; color: #aaa; font-size: 14px; margin-top: 0; text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 10px;">KẾT NỐI MÁY CHỦ</h2>
+<div id="mp-lobby" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(10, 10, 15, 0.98); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif;">
+    <div style="width: 300px; background: #111; border: 1px solid #444; padding: 20px; border-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+        <h2 style="text-align: center; color: #aaa; font-size: 14px; margin-top: 0; text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 10px;">KẾT NỐI MÁY CHỦ</h2>
+        
+        <div id="lobby-menu">
+            <input type="text" id="playerName" placeholder="Nhập tên chỉ huy" style="width: 100%; padding: 8px; margin-bottom: 10px; background: #000; border: 1px solid #555; color: #fff; font-size: 11px; outline: none; box-sizing: border-box;">
             
-            <div id="lobby-menu">
-                <input type="text" id="playerName" placeholder="Nhập tên chỉ huy" style="width: 100%; padding: 8px; margin-bottom: 10px; background: #000; border: 1px solid #555; color: #fff; font-size: 11px; outline: none; box-sizing: border-box;">
-                <button class="btn" onclick="hostRoom()" style="width: 100%; margin-bottom: 8px; background: rgba(255,255,255,0.05); color: #ccc; border-color: #555;">TẠO PHÒNG (HOST)</button>
-                
-                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
-                    <input type="text" id="roomCodeInput" placeholder="Mã phòng" style="flex: 1; padding: 8px; background: #000; border: 1px solid #555; color: #fff; font-size: 11px; text-transform: uppercase; outline: none; box-sizing: border-box;">
-                    <button class="btn" onclick="joinRoom()" style="background: rgba(255,255,255,0.05); color: #ccc; border-color: #555;">THAM GIA</button>
-                </div>
-                
-                <button class="btn" onclick="playOffline()" style="width: 100%; border-color: #00ffff; color: #00ffff; background: rgba(0,255,255,0.05);">CHƠI OFFLINE</button>
+            <!-- THÊM CHỌN CHẾ ĐỘ ALLY -->
+            <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px; background: #0a0a0a; padding: 8px; border-radius: 4px; border: 1px solid #333;">
+                <label style="color: #aaa; font-size: 10px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                    <input type="radio" name="gameMode" value="ffa" checked style="accent-color: #00ffff;">
+                    🔥 CHIẾN LOẠN (FFA)
+                </label>
+                <label style="color: #aaa; font-size: 10px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                    <input type="radio" name="gameMode" value="team" style="accent-color: #ffcc00;">
+                    🤝 ĐỒNG ĐỘI (TEAM)
+                </label>
+            </div>
+            
+            <button class="btn" onclick="hostRoom()" style="width: 100%; margin-bottom: 8px; background: rgba(255,255,255,0.05); color: #ccc; border-color: #555;">TẠO PHÒNG (HOST)</button>
+            
+            <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                <input type="text" id="roomCodeInput" placeholder="Mã phòng" style="flex: 1; padding: 8px; background: #000; border: 1px solid #555; color: #fff; font-size: 11px; text-transform: uppercase; outline: none; box-sizing: border-box;">
+                <button class="btn" onclick="joinRoom()" style="background: rgba(255,255,255,0.05); color: #ccc; border-color: #555;">THAM GIA</button>
+            </div>
+            
+            <button class="btn" onclick="playOffline()" style="width: 100%; border-color: #00ffff; color: #00ffff; background: rgba(0,255,255,0.05);">CHƠI OFFLINE</button>
+        </div>
+
+        <div id="lobby-room" style="display: none;">
+            <p style="text-align: center; color: #aaa; font-size: 11px; margin-bottom: 5px;">MÃ PHÒNG CỦA BẠN:</p>
+            
+            <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 5px;">
+                <h1 id="lbl-roomCode" style="color: #00ffff; font-size: 24px; letter-spacing: 2px; margin: 0;">---</h1>
+                <button class="btn" onclick="copyInviteLink()" style="width: auto; padding: 6px 10px; font-size: 9px; background: rgba(0,255,255,0.15); border-color: #00ffff; font-weight: bold;">🔗 COPY LINK</button>
+            </div>
+            
+            <!-- HIỂN THỊ CHẾ ĐỘ HIỆN TẠI -->
+            <p id="mode-display" style="text-align: center; color: #ffcc00; font-size: 10px; margin-bottom: 5px; font-weight: bold;">🔥 CHẾ ĐỘ: CHIẾN LOẠN</p>
+            
+            <p id="player-count-lbl" style="text-align: center; color: #ffcc00; font-size: 10px; margin-bottom: 15px; font-weight: bold;">SỐ LƯỢNG: 1/8</p>
+            
+            <div id="player-list" style="background: #050505; border: 1px solid #333; min-height: 100px; padding: 10px; margin-bottom: 15px; font-size: 11px; color: #ccc; max-height: 150px; overflow-y: auto;">
             </div>
 
-            <div id="lobby-room" style="display: none;">
-                <p style="text-align: center; color: #aaa; font-size: 11px; margin-bottom: 5px;">MÃ PHÒNG CỦA BẠN:</p>
-                
-                <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 5px;">
-                    <h1 id="lbl-roomCode" style="color: #00ffff; font-size: 24px; letter-spacing: 2px; margin: 0;">---</h1>
-                    <button class="btn" onclick="copyInviteLink()" style="width: auto; padding: 6px 10px; font-size: 9px; background: rgba(0,255,255,0.15); border-color: #00ffff; font-weight: bold;">🔗 COPY LINK</button>
-                </div>
-                
-                <p id="player-count-lbl" style="text-align: center; color: #ffcc00; font-size: 10px; margin-bottom: 15px; font-weight: bold;">SỐ LƯỢNG: 1/8</p>
-                
-                <div id="player-list" style="background: #050505; border: 1px solid #333; min-height: 100px; padding: 10px; margin-bottom: 15px; font-size: 11px; color: #ccc; max-height: 150px; overflow-y: auto;">
-                    </div>
-
-                <div id="host-settings" style="display: none; width: 100%; margin-bottom: 15px;">
-                    <label style="color: #aaa; font-size: 10px; display: block; margin-bottom: 4px;">SỨC MẠNH BOT (CHỈ HOST THẤY):</label>
-                    <select id="bot-buff-select" style="width: 100%; padding: 8px; background: #000; border: 1px solid #00ffff; color: #00ffff; font-size: 11px; outline: none; box-sizing: border-box;">
-                        <option value="0">Giữ nguyên (Mặc định)</option>
-                        <option value="0.1">+10% Máu & Sát thương</option>
-                        <option value="0.2">+20% Máu & Sát thương</option>
-                        <option value="0.5">+50% Máu & Sát thương</option>
-                        <option value="1.0">+100% Cực khó (Hardcore)</option>
-                    </select>
-                </div>
-
-                <button id="btn-start-mp" class="btn" onclick="startMultiplayer()" style="width: 100%; display: none; background: rgba(0,255,255,0.1); border-color: #00ffff; color: #00ffff;">BẮT ĐẦU CHIẾN DỊCH</button>
-                <p id="wait-msg" style="text-align: center; color: #888; font-size: 10px; display: none;">Đang đợi Host bắt đầu...</p>
+            <div id="host-settings" style="display: none; width: 100%; margin-bottom: 15px;">
+                <label style="color: #aaa; font-size: 10px; display: block; margin-bottom: 4px;">SỨC MẠNH BOT (CHỈ HOST THẤY):</label>
+                <select id="bot-buff-select" style="width: 100%; padding: 8px; background: #000; border: 1px solid #00ffff; color: #00ffff; font-size: 11px; outline: none; box-sizing: border-box;">
+                    <option value="0">Giữ nguyên (Mặc định)</option>
+                    <option value="0.1">+10% Máu & Sát thương</option>
+                    <option value="0.2">+20% Máu & Sát thương</option>
+                    <option value="0.5">+50% Máu & Sát thương</option>
+                    <option value="1.0">+100% Cực khó (Hardcore)</option>
+                </select>
             </div>
+
+            <button id="btn-start-mp" class="btn" onclick="startMultiplayer()" style="width: 100%; display: none; background: rgba(0,255,255,0.1); border-color: #00ffff; color: #00ffff;">BẮT ĐẦU CHIẾN DỊCH</button>
+            <p id="wait-msg" style="text-align: center; color: #888; font-size: 10px; display: none;">Đang đợi Host bắt đầu...</p>
         </div>
     </div>
-
+</div>
 
 
 
@@ -296,7 +311,12 @@ function hostRoom() {
         return;
     }
     let name = document.getElementById('playerName').value.trim() || 'Host';
-    socket.emit('createRoom', name);
+    
+    // Lấy chế độ đã chọn
+    let modeRadio = document.querySelector('input[name="gameMode"]:checked');
+    let mode = modeRadio ? modeRadio.value : 'ffa';
+    
+    socket.emit('createRoom', { username: name, mode: mode });
 }
 
 function joinRoom() {
@@ -328,13 +348,26 @@ if (socket) {
         console.error('❌ Lỗi kết nối:', err.message);
     });
 
-    socket.on('init', (data) => {
-        console.log('📦 Nhận dữ liệu khởi tạo:', data);
-        isOnline = true;
-        myRole = data.role;
-        myTeamId = data.team;
-        myRoomCode = data.roomCode;
-        lobbyPlayers = data.players;
+socket.on('init', (data) => {
+    console.log('📦 Nhận dữ liệu khởi tạo:', data);
+    isOnline = true;
+    myRole = data.role;
+    myTeamId = data.team;
+    myRoomCode = data.roomCode;
+    lobbyPlayers = data.players;
+    gameMode = data.mode || 'ffa'; // Lưu mode từ server
+    
+    // Hiển thị mode
+    const modeDisplay = document.getElementById('mode-display');
+    if (modeDisplay) {
+        if (gameMode === 'team') {
+            modeDisplay.innerHTML = '🤝 CHẾ ĐỘ: ĐỒNG ĐỘI (Player vs Bot)';
+            modeDisplay.style.color = '#ffcc00';
+        } else {
+            modeDisplay.innerHTML = '🔥 CHẾ ĐỘ: CHIẾN LOẠN (Tất cả vs Tất cả)';
+            modeDisplay.style.color = '#ff4444';
+        }
+    }
         
         document.getElementById('lobby-menu').style.display = 'none';
         document.getElementById('lobby-room').style.display = 'block';
@@ -358,13 +391,14 @@ if (socket) {
         showToast(msg, "#ffd700");
     });
 
-    socket.on('gameStarted', (humanPlayerTeams) => {
-        console.log('🎮 Trận đấu bắt đầu!');
-        humanTeams = humanPlayerTeams;
-        document.getElementById('mp-lobby').style.display = 'none';
-        document.getElementById('command-room').style.display = 'none';
-        startGame();
-    });
+socket.on('gameStarted', (data) => {
+    console.log('🎮 Trận đấu bắt đầu! Mode:', data.mode);
+    humanTeams = data.humanTeams;
+    gameMode = data.mode || 'ffa';
+    document.getElementById('mp-lobby').style.display = 'none';
+    document.getElementById('command-room').style.display = 'none';
+    startGame();
+});
 
     socket.on('hostDisconnected', () => {
         alert("Host đã ngắt kết nối!");

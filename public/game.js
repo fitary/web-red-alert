@@ -118,6 +118,10 @@ const GAME_CONFIG = {
 };
 
 // --- BIẾN TOÀN CỤ ---
+// Thêm vào phần biến toàn cục
+let gameMode = 'ffa'; // 'ffa' hoặc 'team'
+const TEAM_PLAYER = ['player'];
+const TEAM_BOT = ['bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'];
 const ALL_TEAMS = ['player', 'bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'];
 const MAP_W = GAME_CONFIG.map.width;
 const MAP_H = GAME_CONFIG.map.height;
@@ -995,16 +999,28 @@ class CombatUnit extends Entity {
             return;
         }
 
-        if (this.unitState !== 'MOVE_TO_POINT' && this.unitType !== 'carrier') {
-            let enemyToAttack = null;
-            let minDistToEnemy = Infinity;
-            for (let ent of entities) {
-                if (ent.team !== this.team && !ent.markedForDeletion) {
-                    let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
-                    if (dist < minDistToEnemy) { minDistToEnemy = dist;
-                        enemyToAttack = ent; }
+if (this.unitState !== 'MOVE_TO_POINT' && this.unitType !== 'carrier') {
+    let enemyToAttack = null;
+    let minDistToEnemy = Infinity;
+    for (let ent of entities) {
+        if (ent.team !== this.team && !ent.markedForDeletion) {
+            // === THÊM LOGIC TEAM MODE ===
+            if (gameMode === 'team') {
+                // Nếu là bot, không tấn công bot khác
+                if (TEAM_BOT.includes(this.team) && TEAM_BOT.includes(ent.team)) {
+                    continue;
+                }
+                // Nếu là player, không tấn công player khác
+                if (TEAM_PLAYER.includes(this.team) && TEAM_PLAYER.includes(ent.team)) {
+                    continue;
                 }
             }
+            // ============================
+            let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
+            if (dist < minDistToEnemy) { minDistToEnemy = dist;
+                enemyToAttack = ent; }
+        }
+    }
             if (enemyToAttack && minDistToEnemy <= this.aggroRange) {
                 isEngaging = true;
                 let dx = enemyToAttack.x - this.x;
@@ -1528,7 +1544,15 @@ function updateGuestState(state) {
 
 // --- AI LOGIC ---
 function getTeamCombatUnits(team) {
-    return units.filter(u => u.team === team && u.unitType !== 'base_repairer' && !u.isDrone);
+    let result = units.filter(u => u.team === team && u.unitType !== 'base_repairer' && !u.isDrone);
+    
+    // Trong TEAM mode, các bot không tấn công lẫn nhau
+    if (gameMode === 'team' && TEAM_BOT.includes(team)) {
+        // Chỉ lấy những unit đang tấn công player
+        result = result.filter(u => u.targetTeam === 'player' || !u.targetTeam);
+    }
+    
+    return result;
 }
 
 function getArmyPower(unitList, queued = []) {
@@ -1558,12 +1582,39 @@ function chooseAITarget(team, bData, base, style) {
     let evalCfg = GAME_CONFIG.ai.evaluation;
     if (bData.targetTeam && getBase(bData.targetTeam) && Math.random() > GAME_CONFIG.ai.targetSwitchChance)
         return bData.targetTeam;
+    
     let candidates = ALL_TEAMS.filter(t => t !== team && getBase(t));
-    if (candidates.length === 0) return null;
+    
+    // === THÊM LOGIC TEAM MODE ===
+    if (gameMode === 'team') {
+        // Bot chỉ tấn công Player team
+        if (TEAM_BOT.includes(team)) {
+            // Bot chỉ tấn công player
+            candidates = candidates.filter(t => TEAM_PLAYER.includes(t));
+        }
+        // Player chỉ tấn công Bot team
+        if (TEAM_PLAYER.includes(team)) {
+            // Player chỉ tấn công bot
+            candidates = candidates.filter(t => TEAM_BOT.includes(t));
+        }
+    }
+    // =============================
+    
+    if (candidates.length === 0) {
+        // Nếu không có mục tiêu hợp lệ trong TEAM mode, tấn công bất kỳ
+        if (gameMode === 'team') {
+            candidates = ALL_TEAMS.filter(t => t !== team && getBase(t));
+        }
+        if (candidates.length === 0) return null;
+    }
+    
     let bestTeam = candidates[0];
     let bestScore = -Infinity;
+    
     candidates.forEach(enemyTeam => {
         let enemyBase = getBase(enemyTeam);
+        if (!enemyBase) return;
+        
         let distance = Math.hypot(enemyBase.x - base.x, enemyBase.y - base.y);
         let enemyTurrets = turrets.filter(t => t.team === enemyTeam).length;
         let enemyArmy = getTeamCombatUnits(enemyTeam).length;
@@ -1608,6 +1659,19 @@ function rallyArmy(team, point, combatUnits) {
 }
 
 function orderArmyAttack(team, targetTeam, combatUnits) {
+    // === THÊM LOGIC TEAM MODE ===
+    if (gameMode === 'team') {
+        // Bot chỉ tấn công player
+        if (TEAM_BOT.includes(team) && !TEAM_PLAYER.includes(targetTeam)) {
+            return;
+        }
+        // Player chỉ tấn công bot
+        if (TEAM_PLAYER.includes(team) && !TEAM_BOT.includes(targetTeam)) {
+            return;
+        }
+    }
+    // ============================
+    
     combatUnits.forEach(u => {
         u.unitState = 'ATTACKING';
         u.targetTeam = targetTeam;
@@ -1675,6 +1739,16 @@ function updateAllAI() {
         if (!base) return;
         let bData = gameData[team];
         if (!bData) return;
+
+        // === THÊM LOGIC TEAM MODE CHO AI ===
+        // Trong TEAM mode, bot không tấn công bot khác
+        if (gameMode === 'team') {
+            // Kiểm tra nếu mục tiêu hiện tại là bot khác -> reset
+            if (bData.targetTeam && TEAM_BOT.includes(bData.targetTeam)) {
+                bData.targetTeam = null;
+            }
+        }
+        // =====================================
 
         let barrack = buildings.find(b => b.team === team && b.type === 'Barracks');
         let aiMiners = miners.filter(m => m.team === team).length +
@@ -1849,6 +1923,11 @@ function initGame() {
         animationId = null;
     }
 
+    // Lưu gameMode từ server nếu có
+    if (isOnline && typeof serverGameMode !== 'undefined') {
+        gameMode = serverGameMode;
+    }
+
     let strats = ['RUSH', 'LATE', 'FLEX'];
     let tList = ['std', 'sea', 'under'];
 
@@ -1877,7 +1956,9 @@ function initGame() {
             aiState: 'GATHER',
             aiStrategy: strats[Math.floor(Math.random() * 3)],
             targetTeam: null,
-            rallyPoint: null
+            rallyPoint: null,
+            // Thêm flag cho TEAM mode
+            isAlly: false
         };
     });
 

@@ -17,21 +17,23 @@ io.on('connection', (socket) => {
     console.log('⚡ Thiết bị kết nối:', socket.id);
 
     // 1. Tạo phòng
-    socket.on('createRoom', (username) => {
+    socket.on('createRoom', (data) => {
         const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
         rooms[roomCode] = { 
             host: socket.id, 
             status: 'waiting',
-            players: [{ id: socket.id, team: 'player', name: username || 'Host' }]
+            mode: data.mode || 'ffa', // 'ffa' hoặc 'team'
+            players: [{ id: socket.id, team: 'player', name: data.username || 'Host' }]
         };
         socket.join(roomCode);
         socket.emit('init', { 
             role: 'host', 
             team: 'player', 
             roomCode: roomCode, 
-            players: rooms[roomCode].players 
+            players: rooms[roomCode].players,
+            mode: rooms[roomCode].mode
         });
-        console.log(`🏠 Phòng ${roomCode} được tạo bởi ${username || 'Host'}`);
+        console.log(`🏠 Phòng ${roomCode} được tạo bởi ${data.username || 'Host'} (Mode: ${rooms[roomCode].mode})`);
     });
 
     // 2. Tham gia phòng
@@ -53,7 +55,8 @@ io.on('connection', (socket) => {
                 role: 'guest', 
                 team: teamId, 
                 roomCode: data.code, 
-                players: room.players 
+                players: room.players,
+                mode: room.mode
             });
             
             io.to(data.code).emit('roomUpdated', room.players);
@@ -74,8 +77,11 @@ io.on('connection', (socket) => {
         if(room && room.host === socket.id) {
             room.status = 'playing';
             const humanTeams = room.players.map(p => p.team);
-            io.to(roomCode).emit('gameStarted', humanTeams);
-            console.log(`🎮 Trận đấu bắt đầu tại phòng ${roomCode}`);
+            io.to(roomCode).emit('gameStarted', { 
+                humanTeams: humanTeams, 
+                mode: room.mode 
+            });
+            console.log(`🎮 Trận đấu bắt đầu tại phòng ${roomCode} (Mode: ${room.mode})`);
         }
     });
 
@@ -125,4 +131,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Server v0.2.0 đang chạy tại port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server v0.3.0 đang chạy tại port ${PORT}`));
