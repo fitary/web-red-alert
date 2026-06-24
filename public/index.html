@@ -359,7 +359,14 @@ socket.on('init', (data) => {
     myTeamId = data.team;
     myRoomCode = data.roomCode;
     lobbyPlayers = data.players;
-    gameMode = data.mode || 'ffa'; // Lưu mode từ server
+    
+    // === QUAN TRỌNG: Cập nhật gameMode từ server ===
+    if (typeof gameMode !== 'undefined') {
+        gameMode = data.mode || 'ffa';
+    } else {
+        // Nếu gameMode chưa được khai báo trong index.html
+        window.gameMode = data.mode || 'ffa';
+    }
     
     // Hiển thị mode
     const modeDisplay = document.getElementById('mode-display');
@@ -372,20 +379,20 @@ socket.on('init', (data) => {
             modeDisplay.style.color = '#ff4444';
         }
     }
-        
-        document.getElementById('lobby-menu').style.display = 'none';
-        document.getElementById('lobby-room').style.display = 'block';
-        document.getElementById('lbl-roomCode').innerText = myRoomCode;
-        
-        if (myRole === 'host') {
-            document.getElementById('btn-start-mp').style.display = 'block';
-            document.getElementById('host-settings').style.display = 'block';
-        } else {
-            document.getElementById('wait-msg').style.display = 'block';
-        }
-        
-        updatePlayerList(data.players);
-    });
+    
+    document.getElementById('lobby-menu').style.display = 'none';
+    document.getElementById('lobby-room').style.display = 'block';
+    document.getElementById('lbl-roomCode').innerText = myRoomCode;
+    
+    if (myRole === 'host') {
+        document.getElementById('btn-start-mp').style.display = 'block';
+        document.getElementById('host-settings').style.display = 'block';
+    } else {
+        document.getElementById('wait-msg').style.display = 'block';
+    }
+    
+    updatePlayerList(data.players);
+});
 
     socket.on('roomUpdated', (players) => {
         updatePlayerList(players);
@@ -398,7 +405,28 @@ socket.on('init', (data) => {
 socket.on('gameStarted', (data) => {
     console.log('🎮 Trận đấu bắt đầu! Mode:', data.mode);
     humanTeams = data.humanTeams;
-    gameMode = data.mode || 'ffa';
+    
+    // === QUAN TRỌNG: Cập nhật gameMode ===
+    if (typeof gameMode !== 'undefined') {
+        gameMode = data.mode || 'ffa';
+    } else {
+        window.gameMode = data.mode || 'ffa';
+    }
+    
+    // Cập nhật hiển thị trên scoreboard
+    const modeDisplay = document.getElementById('game-mode-display');
+    if (modeDisplay) {
+        if (gameMode === 'team') {
+            modeDisplay.textContent = '🤝 TEAM MODE: Player vs Bot';
+            modeDisplay.style.borderColor = '#ffcc00';
+            modeDisplay.style.color = '#ffcc00';
+        } else {
+            modeDisplay.textContent = '🔥 FFA MODE: Tất cả vs Tất cả';
+            modeDisplay.style.borderColor = '#ff4444';
+            modeDisplay.style.color = '#ff4444';
+        }
+    }
+    
     document.getElementById('mp-lobby').style.display = 'none';
     document.getElementById('command-room').style.display = 'none';
     startGame();

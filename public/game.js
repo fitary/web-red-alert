@@ -125,18 +125,6 @@ let gameMode = 'ffa'; // 'ffa' hoặc 'team'
 const TEAM_PLAYER = ['player'];
 const TEAM_BOT = ['bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'];
 
-// Hàm kiểm tra có phải là đồng đội không
-function isAlly(team1, team2) {
-    if (gameMode === 'ffa') return false;
-    if (team1 === team2) return true;
-    
-    // TEAM mode: player và player là đồng đội, bot và bot là đồng đội
-    if (TEAM_PLAYER.includes(team1) && TEAM_PLAYER.includes(team2)) return true;
-    if (TEAM_BOT.includes(team1) && TEAM_BOT.includes(team2)) return true;
-    
-    return false;
-}
-
 // Hàm kiểm tra có phải là kẻ thù không
 function isEnemy(team1, team2) {
     if (gameMode === 'ffa') return team1 !== team2;
@@ -1843,16 +1831,25 @@ function updateAllAI() {
             if (targetBase && (aiCombatUnitsCount >= styleCfg.attackThreshold ||
                     armyPower >= styleCfg.minAttackPower || getThreatNearBase(team) >= 3)) {
                 bData.aiState = 'ATTACK';
-                orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
+                // CHỈ TẤN CÔNG NẾU LÀ KẺ THÙ
+                if (isEnemy(team, bData.targetTeam)) {
+                    orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
+                }
             }
         } else if (bData.aiState === 'ATTACK') {
             if (aiCombatUnitsCount <= styleCfg.retreatAt || !targetBase) {
                 bData.aiState = 'GATHER';
             } else {
-                orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
+                // CHỈ TẤN CÔNG NẾU LÀ KẺ THÙ
+                if (isEnemy(team, bData.targetTeam)) {
+                    orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
+                } else {
+                    bData.aiState = 'GATHER';
+                }
             }
         }
 
+        // Phần còn lại giữ nguyên...
         if (bData.gold > GAME_CONFIG.economy.techUpgradeCost + 50 && Math.random() < GAME_CONFIG.ai.upgradeChance) {
             bData.gold -= GAME_CONFIG.economy.techUpgradeCost;
             let targets = ['interceptor', 'corvette', 'repairer', 'railgun', 'spc'];
