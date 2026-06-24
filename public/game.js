@@ -118,10 +118,49 @@ const GAME_CONFIG = {
 };
 
 // --- BIẾN TOÀN CỤ ---
-// Thêm vào phần biến toàn cục
+// ============================================
+// THÊM VÀO ĐẦU FILE - BIẾN TOÀN CỤ
+// ============================================
 let gameMode = 'ffa'; // 'ffa' hoặc 'team'
 const TEAM_PLAYER = ['player'];
 const TEAM_BOT = ['bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'];
+
+// Hàm kiểm tra có phải là đồng đội không
+function isAlly(team1, team2) {
+    if (gameMode === 'ffa') return false;
+    if (team1 === team2) return true;
+    
+    // TEAM mode: player và player là đồng đội, bot và bot là đồng đội
+    if (TEAM_PLAYER.includes(team1) && TEAM_PLAYER.includes(team2)) return true;
+    if (TEAM_BOT.includes(team1) && TEAM_BOT.includes(team2)) return true;
+    
+    return false;
+}
+
+// Hàm kiểm tra có phải là kẻ thù không
+function isEnemy(team1, team2) {
+    if (gameMode === 'ffa') return team1 !== team2;
+    if (team1 === team2) return false;
+    
+    // TEAM mode: player vs bot
+    if (TEAM_PLAYER.includes(team1) && TEAM_BOT.includes(team2)) return true;
+    if (TEAM_BOT.includes(team1) && TEAM_PLAYER.includes(team2)) return true;
+    
+    return false;
+}
+
+// Hàm lấy danh sách kẻ thù của một team
+function getEnemyTeams(team) {
+    if (gameMode === 'ffa') {
+        return ALL_TEAMS.filter(t => t !== team);
+    } else {
+        if (TEAM_PLAYER.includes(team)) {
+            return TEAM_BOT.slice(); // Player team đánh bot
+        } else {
+            return TEAM_PLAYER.slice(); // Bot team đánh player
+        }
+    }
+}
 const ALL_TEAMS = ['player', 'bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'];
 const MAP_W = GAME_CONFIG.map.width;
 const MAP_H = GAME_CONFIG.map.height;
@@ -1002,27 +1041,20 @@ class CombatUnit extends Entity {
 if (this.unitState !== 'MOVE_TO_POINT' && this.unitType !== 'carrier') {
     let enemyToAttack = null;
     let minDistToEnemy = Infinity;
+    
     for (let ent of entities) {
-        if (ent.team !== this.team && !ent.markedForDeletion) {
-            // === THÊM LOGIC TEAM MODE ===
-            if (gameMode === 'team') {
-                // Nếu là bot, không tấn công bot khác
-                if (TEAM_BOT.includes(this.team) && TEAM_BOT.includes(ent.team)) {
-                    continue;
-                }
-                // Nếu là player, không tấn công player khác
-                if (TEAM_PLAYER.includes(this.team) && TEAM_PLAYER.includes(ent.team)) {
-                    continue;
-                }
-            }
-            // ============================
+        // === SỬA LOGIC KIỂM TRA KẺ THÙ ===
+        if (isEnemy(this.team, ent.team) && !ent.markedForDeletion) {
             let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
-            if (dist < minDistToEnemy) { minDistToEnemy = dist;
-                enemyToAttack = ent; }
+            if (dist < minDistToEnemy) { 
+                minDistToEnemy = dist;
+                enemyToAttack = ent; 
+            }
         }
     }
-            if (enemyToAttack && minDistToEnemy <= this.aggroRange) {
-                isEngaging = true;
+    
+    if (enemyToAttack && minDistToEnemy <= this.aggroRange) {
+        isEngaging = true;
                 let dx = enemyToAttack.x - this.x;
                 let dy = enemyToAttack.y - this.y;
                 this.angle = Math.atan2(dy, dx);
@@ -1464,6 +1496,34 @@ function sendSyncData() {
 }
 
 function checkGameOverStatus(m, s) {
+    if (gameMode === 'team') {
+        // TEAM mode: Kiểm tra player team vs bot team
+        let playerBase = getBase('player');
+        let botBases = TEAM_BOT.filter(t => getBase(t)).length;
+        
+        if (!playerBase && !gameOver) {
+            gameOver = true;
+            document.getElementById('game-over').style.display = 'flex';
+            let text = document.getElementById('result-text');
+            text.innerHTML = `💀 ĐỒNG ĐỘI BỊ TIÊU DIỆT!<br><span style="font-size:12px; color:#aaa;">(Thời gian: ${m}:${s})</span>`;
+            text.style.color = "#ff4444";
+            return;
+        }
+        
+        if (botBases === 0 && !gameOver && frameCount > 30) {
+            gameOver = true;
+            document.getElementById('game-over').style.display = 'flex';
+            profile.darkMatter += 1050;
+            let text = document.getElementById('result-text');
+            text.innerHTML = `🎉 CHIẾN THẮNG ĐỒNG ĐỘI!<br><span style="font-size:12px; color:#aaa;">Đã tiêu diệt toàn bộ Bot!<br>Thời gian: ${m}:${s}<br>+1050 LÕI HẮC THẠCH</span>`;
+            text.style.color = "#00ffff";
+            profile.sector += 1;
+            saveProfile();
+        }
+        return;
+    }
+    
+    // FFA mode (giữ nguyên)
     let pBase = getBase('player');
     let botBases = buildings.filter(b => b.team !== 'player' && b.type === 'Base').length;
     if (!pBase && !gameOver) {
@@ -1544,15 +1604,7 @@ function updateGuestState(state) {
 
 // --- AI LOGIC ---
 function getTeamCombatUnits(team) {
-    let result = units.filter(u => u.team === team && u.unitType !== 'base_repairer' && !u.isDrone);
-    
-    // Trong TEAM mode, các bot không tấn công lẫn nhau
-    if (gameMode === 'team' && TEAM_BOT.includes(team)) {
-        // Chỉ lấy những unit đang tấn công player
-        result = result.filter(u => u.targetTeam === 'player' || !u.targetTeam);
-    }
-    
-    return result;
+    return units.filter(u => u.team === team && u.unitType !== 'base_repairer' && !u.isDrone);
 }
 
 function getArmyPower(unitList, queued = []) {
@@ -1580,31 +1632,28 @@ function getThreatNearBase(team, radius = GAME_CONFIG.ai.evaluation.ownBaseThrea
 
 function chooseAITarget(team, bData, base, style) {
     let evalCfg = GAME_CONFIG.ai.evaluation;
-    if (bData.targetTeam && getBase(bData.targetTeam) && Math.random() > GAME_CONFIG.ai.targetSwitchChance)
-        return bData.targetTeam;
     
-    let candidates = ALL_TEAMS.filter(t => t !== team && getBase(t));
-    
-    // === THÊM LOGIC TEAM MODE ===
-    if (gameMode === 'team') {
-        // Bot chỉ tấn công Player team
-        if (TEAM_BOT.includes(team)) {
-            // Bot chỉ tấn công player
-            candidates = candidates.filter(t => TEAM_PLAYER.includes(t));
-        }
-        // Player chỉ tấn công Bot team
-        if (TEAM_PLAYER.includes(team)) {
-            // Player chỉ tấn công bot
-            candidates = candidates.filter(t => TEAM_BOT.includes(t));
+    // Nếu đã có mục tiêu và vẫn còn sống, giữ nguyên
+    if (bData.targetTeam && getBase(bData.targetTeam)) {
+        // Kiểm tra mục tiêu có còn là kẻ thù không
+        if (isEnemy(team, bData.targetTeam)) {
+            if (Math.random() > GAME_CONFIG.ai.targetSwitchChance) {
+                return bData.targetTeam;
+            }
         }
     }
-    // =============================
     
+    // Lấy danh sách kẻ thù dựa trên game mode
+    let candidates = getEnemyTeams(team).filter(t => getBase(t));
+    
+    // Nếu không có kẻ thù, trả về null
     if (candidates.length === 0) {
-        // Nếu không có mục tiêu hợp lệ trong TEAM mode, tấn công bất kỳ
+        // Trong TEAM mode, nếu không còn kẻ thù nào, bot sẽ đứng yên
         if (gameMode === 'team') {
-            candidates = ALL_TEAMS.filter(t => t !== team && getBase(t));
+            return null;
         }
+        // FFA: nếu không có kẻ thù, lấy tất cả các team khác
+        candidates = ALL_TEAMS.filter(t => t !== team && getBase(t));
         if (candidates.length === 0) return null;
     }
     
@@ -1619,19 +1668,26 @@ function chooseAITarget(team, bData, base, style) {
         let enemyTurrets = turrets.filter(t => t.team === enemyTeam).length;
         let enemyArmy = getTeamCombatUnits(enemyTeam).length;
         let hpRatio = enemyBase.hp / enemyBase.maxHp;
-        let pressureOnUs = units.filter(u => u.team === enemyTeam &&
-            Math.hypot(u.x - base.x, u.y - base.y) < evalCfg.pressureRadius).length;
+        let pressureOnUs = units.filter(u => 
+            isEnemy(u.team, team) && 
+            Math.hypot(u.x - base.x, u.y - base.y) < evalCfg.pressureRadius
+        ).length;
+        
         let score = 0;
         score += (1 - hpRatio) * evalCfg.weakBaseWeight;
         score += Math.max(0, evalCfg.closeTargetRange - distance) / evalCfg.closeTargetDivisor;
-        score -= enemyTurrets * (style === GAME_CONFIG.ai.styles.RUSH ? evalCfg.turretPenaltyRush :
-            evalCfg.turretPenaltyDefault);
+        score -= enemyTurrets * (style === GAME_CONFIG.ai.styles.RUSH ? evalCfg.turretPenaltyRush : evalCfg.turretPenaltyDefault);
         score -= enemyArmy * evalCfg.enemyArmyPenalty;
         score += pressureOnUs * evalCfg.pressureWeight;
+        
         if (enemyTeam === 'player') score += evalCfg.playerBias;
-        if (score > bestScore) { bestScore = score;
-            bestTeam = enemyTeam; }
+        
+        if (score > bestScore) { 
+            bestScore = score; 
+            bestTeam = enemyTeam; 
+        }
     });
+    
     return bestTeam;
 }
 
@@ -1659,17 +1715,18 @@ function rallyArmy(team, point, combatUnits) {
 }
 
 function orderArmyAttack(team, targetTeam, combatUnits) {
-    // === THÊM LOGIC TEAM MODE ===
-    if (gameMode === 'team') {
-        // Bot chỉ tấn công player
-        if (TEAM_BOT.includes(team) && !TEAM_PLAYER.includes(targetTeam)) {
-            return;
-        }
-        // Player chỉ tấn công bot
-        if (TEAM_PLAYER.includes(team) && !TEAM_BOT.includes(targetTeam)) {
-            return;
-        }
+    // Kiểm tra targetTeam có phải là kẻ thù không
+    if (!isEnemy(team, targetTeam)) {
+        // Nếu không phải kẻ thù, không tấn công
+        return;
     }
+    
+    combatUnits.forEach(u => {
+        u.unitState = 'ATTACKING';
+        u.targetTeam = targetTeam;
+        u.hasHoldPosition = false;
+    });
+}
     // ============================
     
     combatUnits.forEach(u => {
@@ -1740,15 +1797,23 @@ function updateAllAI() {
         let bData = gameData[team];
         if (!bData) return;
 
-        // === THÊM LOGIC TEAM MODE CHO AI ===
-        // Trong TEAM mode, bot không tấn công bot khác
-        if (gameMode === 'team') {
-            // Kiểm tra nếu mục tiêu hiện tại là bot khác -> reset
-            if (bData.targetTeam && TEAM_BOT.includes(bData.targetTeam)) {
-                bData.targetTeam = null;
-            }
+        // === KIỂM TRA TEAM MODE ===
+        // Nếu không còn kẻ thù nào, dừng AI
+        let enemies = getEnemyTeams(team).filter(t => getBase(t));
+        if (enemies.length === 0 && gameMode === 'team') {
+            // Trong TEAM mode, nếu không còn kẻ thù, bot dừng tấn công
+            bData.aiState = 'GATHER';
+            bData.targetTeam = null;
+            // Cho quân về nhà
+            let aiCombatUnits = getTeamCombatUnits(team);
+            aiCombatUnits.forEach(u => {
+                u.unitState = 'IDLE';
+                u.targetTeam = null;
+                u.hasHoldPosition = false;
+            });
+            return;
         }
-        // =====================================
+        // ===============================
 
         let barrack = buildings.find(b => b.team === team && b.type === 'Barracks');
         let aiMiners = miners.filter(m => m.team === team).length +
@@ -2187,6 +2252,32 @@ function updateUI() {
     }
 
     if (document.getElementById('upgrade-modal').style.display === 'flex') renderTechStats();
+//-------
+    // Thêm hiển thị chế độ game
+    let modeElement = document.getElementById('game-mode-display');
+    if (!modeElement) {
+        // Tạo element nếu chưa có
+        let scoreboard = document.getElementById('scoreboard');
+        if (scoreboard) {
+            modeElement = document.createElement('div');
+            modeElement.id = 'game-mode-display';
+            modeElement.style.cssText = 'position: absolute; top: 30px; right: 10px; color: #ffcc00; font-size: 10px; font-weight: bold; background: rgba(0,0,0,0.7); padding: 3px 8px; border-radius: 4px; border: 1px solid #ffcc00; z-index: 15;';
+            scoreboard.appendChild(modeElement);
+        }
+    }
+    
+    if (modeElement) {
+        if (gameMode === 'team') {
+            modeElement.textContent = '🤝 TEAM MODE: Player vs Bot';
+            modeElement.style.borderColor = '#ffcc00';
+            modeElement.style.color = '#ffcc00';
+        } else {
+            modeElement.textContent = '🔥 FFA MODE: Tất cả vs Tất cả';
+            modeElement.style.borderColor = '#ff4444';
+            modeElement.style.color = '#ff4444';
+        }
+    }
+//-------
 }
 
 // --- GAME LOOP ---
