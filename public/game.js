@@ -118,9 +118,6 @@ const GAME_CONFIG = {
 };
 
 // --- BIẾN TOÀN CỤ ---
-// ============================================
-// THÊM VÀO ĐẦU FILE - BIẾN TOÀN CỤ
-// ============================================
 let gameMode = 'ffa'; // 'ffa' hoặc 'team'
 const TEAM_PLAYER = ['player'];
 const TEAM_BOT = ['bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'];
@@ -149,6 +146,7 @@ function getEnemyTeams(team) {
         }
     }
 }
+
 const ALL_TEAMS = ['player', 'bot1', 'bot2', 'bot3', 'bot4', 'bot5', 'bot6', 'bot7'];
 const MAP_W = GAME_CONFIG.map.width;
 const MAP_H = GAME_CONFIG.map.height;
@@ -440,7 +438,7 @@ class Building extends Entity {
             let target = null;
             let minDist = Infinity;
             for (let ent of entities) {
-                if (ent.team !== this.team && !ent.markedForDeletion) {
+                if (isEnemy(this.team, ent.team) && !ent.markedForDeletion) {
                     let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
                     if (dist < minDist) { minDist = dist;
                         target = ent; }
@@ -588,7 +586,7 @@ class Turret extends Entity {
         let target = null;
         let minDist = Infinity;
         for (let ent of entities) {
-            if (ent.team !== this.team && !ent.markedForDeletion) {
+            if (isEnemy(this.team, ent.team) && !ent.markedForDeletion) {
                 let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
                 if (dist < minDist) { minDist = dist;
                     target = ent; }
@@ -636,7 +634,7 @@ class Turret extends Entity {
     }
 }
 
-// --- CLASS MINER (ĐÃ SỬA LỖI DI CHUYỂN) ---
+// --- CLASS MINER ---
 class Miner extends Entity {
     constructor(x, y, team) {
         super(x, y, team, 'miner', GAME_CONFIG.buildings.miner.hp);
@@ -647,86 +645,31 @@ class Miner extends Entity {
         this.mineTimer = 0;
         this.targetMine = null;
         this.angle = -Math.PI / 2;
-        this.separationRadius = 25;
-        this.avoidForce = { x: 0, y: 0 };
-        this.stuckTimer = 0;
-        this.lastPosition = { x: this.x, y: this.y };
-        this.wanderAngle = Math.random() * Math.PI * 2;
-        this.smoothX = this.x;
-        this.smoothY = this.y;
     }
 
     update(minesArray, basesArray) {
         let spdLv = gameData[this.team] ? gameData[this.team].upg['miner'].spdLv : 0;
         let speed = getEffectiveStat(GAME_CONFIG.buildings.miner.spd, spdLv, this.team, 'miner_spd');
-        
-        this.avoidForce = { x: 0, y: 0 };
-        
-        // Áp dụng lực tách biệt với miners khác
-        miners.forEach(other => {
-            if (other === this || other.markedForDeletion) return;
-            if (other.team === this.team) {
-                let dx = this.x - other.x;
-                let dy = this.y - other.y;
-                let dist = Math.hypot(dx, dy);
-                if (dist > 0 && dist < this.separationRadius * 2) {
-                    let strength = (this.separationRadius * 2 - dist) / (this.separationRadius * 2);
-                    this.avoidForce.x += (dx / dist) * strength * 0.6;
-                    this.avoidForce.y += (dy / dist) * strength * 0.6;
-                }
-            }
-        });
-
-        // Kiểm tra bị kẹt
-        let distMoved = Math.hypot(this.x - this.lastPosition.x, this.y - this.lastPosition.y);
-        if (distMoved < 0.3) {
-            this.stuckTimer++;
-            if (this.stuckTimer > 40) {
-                this.wanderAngle += (Math.random() - 0.5) * 2;
-                this.x += Math.cos(this.wanderAngle) * 3;
-                this.y += Math.sin(this.wanderAngle) * 3;
-                this.stuckTimer = 0;
-                if (this.state === 'moving_to_mine' || this.state === 'mining') {
-                    this.targetMine = null;
-                    this.state = 'moving_to_mine';
-                }
-            }
-        } else {
-            this.stuckTimer = 0;
-        }
-        this.lastPosition = { x: this.x, y: this.y };
-
         if (this.state === 'moving_to_mine' || this.state === 'mining') {
             if (!this.targetMine || this.targetMine.markedForDeletion) {
                 let closestMine = null;
                 let minDist = Infinity;
                 minesArray.forEach(m => {
-                    if (!m.markedForDeletion) {
-                        let d = Math.hypot(m.x - this.x, m.y - this.y);
-                        if (d < minDist) { minDist = d;
-                            closestMine = m; }
-                    }
+                    let d = Math.hypot(m.x - this.x, m.y - this.y);
+                    if (d < minDist) { minDist = d;
+                        closestMine = m; }
                 });
                 this.targetMine = closestMine;
-                if (!this.targetMine) { 
-                    this.state = 'returning'; 
-                    return; 
-                }
+                if (!this.targetMine) { this.state = 'returning'; return; }
             }
-
-            let dx = this.targetMine.x - this.x + this.avoidForce.x * 8;
-            let dy = this.targetMine.y - this.y + this.avoidForce.y * 8;
+            let dx = this.targetMine.x - this.x;
+            let dy = this.targetMine.y - this.y;
             let dist = Math.hypot(dx, dy);
-            
-            if (dist > this.radius + this.targetMine.radius + 15) {
+            if (dist > this.radius + this.targetMine.radius + 20) {
                 this.state = 'moving_to_mine';
-                if (dist > 0) {
-                    this.angle = Math.atan2(dy, dx);
-                    let moveSpeed = Math.min(speed * 0.8, dist * 0.12);
-                    let noise = 1 + (Math.random() - 0.5) * 0.1;
-                    this.x += (dx / dist) * moveSpeed * noise;
-                    this.y += (dy / dist) * moveSpeed * noise;
-                }
+                this.angle = Math.atan2(dy, dx);
+                this.x += (dx / dist) * speed;
+                this.y += (dy / dist) * speed;
             } else {
                 this.state = 'mining';
                 this.mineTimer++;
@@ -735,40 +678,55 @@ class Miner extends Entity {
                     if (gathered > 0) {
                         this.carryAmount += gathered;
                         this.mineTimer = 0;
-                        if (this.carryAmount >= this.maxCarry) {
-                            this.state = 'returning';
-                            this.targetMine = null;
-                        }
+                        if (this.carryAmount >= this.maxCarry) this.state = 'returning';
                     }
                 }
             }
         } else if (this.state === 'returning') {
             let myBase = basesArray.find(b => b.team === this.team && b.type === 'Base');
             if (myBase) {
-                let dx = myBase.x - this.x + this.avoidForce.x * 8;
-                let dy = myBase.y - this.y + this.avoidForce.y * 8;
+                let dx = myBase.x - this.x;
+                let dy = myBase.y - this.y;
                 let dist = Math.hypot(dx, dy);
-                
-                if (dist > this.radius + myBase.radius + 20) {
+                if (dist > this.radius + myBase.radius + 25) {
                     this.angle = Math.atan2(dy, dx);
-                    let moveSpeed = Math.min(speed * 0.8, dist * 0.12);
-                    this.x += (dx / dist) * moveSpeed;
-                    this.y += (dy / dist) * moveSpeed;
+                    this.x += (dx / dist) * speed;
+                    this.y += (dy / dist) * speed;
                 } else {
-                    if (gameData[this.team]) gameData[this.team].gold += this.carryAmount;
+                    gameData[this.team].gold += this.carryAmount;
                     this.carryAmount = 0;
                     this.targetMine = null;
                     this.state = 'moving_to_mine';
                 }
             }
         }
-        
-        this.x = Math.max(20, Math.min(MAP_W - 20, this.x));
-        this.y = Math.max(20, Math.min(MAP_H - 20, this.y));
+    }
+
+    draw(ctx) {
+        let imgKey = gameData[this.team] ? gameData[this.team].theme + '_miner' : 'std_miner';
+        let img = assets[imgKey];
+        let drawSize = this.radius * 3.5;
+        if (img && img.complete && img.naturalWidth > 0) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.angle + Math.PI / 2);
+            ctx.drawImage(img, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
+            ctx.restore();
+        } else {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = "#222";
+            ctx.fill();
+            ctx.strokeStyle = this.color;
+            ctx.stroke();
+            ctx.restore();
+        }
+        this.drawBarStats(ctx, this.radius + 12, 20);
     }
 }
 
-// --- CLASS COMBAT UNIT (ĐÃ SỬA LỖI DI CHUYỂN) ---
+// --- CLASS COMBAT UNIT ---
 class CombatUnit extends Entity {
     constructor(x, y, team, type) {
         let s = GAME_CONFIG.units[type];
@@ -800,95 +758,9 @@ class CombatUnit extends Entity {
         this.hasHoldPosition = false;
         this.id = Math.random().toString(36).substring(2, 10);
         this.customAtk = undefined;
-        this.separationRadius = 30;
-        this.avoidForce = { x: 0, y: 0 };
-        this.stuckTimer = 0;
-        this.lastPosition = { x: this.x, y: this.y };
-        this.formationOffset = { x: 0, y: 0 };
-    }
-
-    applySeparation(entities) {
-        let forceX = 0, forceY = 0;
-        let neighbors = 0;
-        
-        entities.forEach(other => {
-            if (other === this || other.markedForDeletion) return;
-            if (other instanceof CombatUnit && other.team === this.team && !other.isDrone) {
-                let dx = this.x - other.x;
-                let dy = this.y - other.y;
-                let dist = Math.hypot(dx, dy);
-                if (dist > 0 && dist < this.separationRadius * 2.5) {
-                    let strength = (this.separationRadius * 2.5 - dist) / (this.separationRadius * 2.5);
-                    forceX += (dx / dist) * strength * 0.5;
-                    forceY += (dy / dist) * strength * 0.5;
-                    neighbors++;
-                }
-            }
-        });
-        
-        if (neighbors > 0) {
-            this.avoidForce.x += forceX / neighbors;
-            this.avoidForce.y += forceY / neighbors;
-        }
-    }
-
-    applyWallAvoidance() {
-        let wallForce = 80;
-        let margin = 50;
-        
-        if (this.x < margin) {
-            this.avoidForce.x += wallForce * (1 - this.x / margin);
-        }
-        if (this.x > MAP_W - margin) {
-            this.avoidForce.x -= wallForce * (1 - (MAP_W - this.x) / margin);
-        }
-        if (this.y < margin) {
-            this.avoidForce.y += wallForce * (1 - this.y / margin);
-        }
-        if (this.y > MAP_H - margin) {
-            this.avoidForce.y -= wallForce * (1 - (MAP_H - this.y) / margin);
-        }
-    }
-
-    smartMove(targetX, targetY, speed) {
-        let dx = targetX - this.x + this.avoidForce.x * 4;
-        let dy = targetY - this.y + this.avoidForce.y * 4;
-        let dist = Math.hypot(dx, dy);
-        
-        if (dist > 0) {
-            let moveSpeed = Math.min(speed * 0.9, dist * 0.12);
-            
-            if (dist < 30) {
-                moveSpeed = speed * (dist / 30);
-            }
-            
-            if (dist < 5 && this.stuckTimer > 30) {
-                let angle = Math.random() * Math.PI * 2;
-                this.x += Math.cos(angle) * 3;
-                this.y += Math.sin(angle) * 3;
-                this.stuckTimer = 0;
-            }
-            
-            this.angle = Math.atan2(dy, dx);
-            this.x += (dx / dist) * Math.min(moveSpeed, dist * 0.2);
-            this.y += (dy / dist) * Math.min(moveSpeed, dist * 0.2);
-        }
-        
-        let distMoved = Math.hypot(this.x - this.lastPosition.x, this.y - this.lastPosition.y);
-        if (distMoved < 0.2) {
-            this.stuckTimer++;
-        } else {
-            this.stuckTimer = 0;
-        }
-        this.lastPosition = { x: this.x, y: this.y };
-        
-        this.x = Math.max(20, Math.min(MAP_W - 20, this.x));
-        this.y = Math.max(20, Math.min(MAP_H - 20, this.y));
     }
 
     update(entities, basesArray) {
-        this.avoidForce = { x: 0, y: 0 };
-        
         if (this.unitType === 'carrier') {
             this.drones = this.drones.filter(d => !d.markedForDeletion);
             if (this.drones.length < GAME_CONFIG.skills.carrier.maxDrones) {
@@ -954,7 +826,8 @@ class CombatUnit extends Entity {
                 this.angle = Math.atan2(dy, dx);
                 let dist = Math.hypot(dx, dy);
                 if (dist > this.range) {
-                    this.smartMove(targetToFix.x, targetToFix.y, speed);
+                    this.x += (dx / dist) * speed;
+                    this.y += (dy / dist) * speed;
                 } else if (this.attackCooldown <= 0) {
                     targetToFix.hp = Math.min(targetToFix.maxHp, targetToFix.hp + GAME_CONFIG.skills.baseRepairer.healAmount);
                     this.laserTarget = targetToFix;
@@ -966,11 +839,11 @@ class CombatUnit extends Entity {
                 let dy = myBase.y - this.y;
                 let dist = Math.hypot(dx, dy);
                 if (dist > 120) {
-                    this.smartMove(myBase.x, myBase.y, speed);
+                    this.angle = Math.atan2(dy, dx);
+                    this.x += (dx / dist) * speed;
+                    this.y += (dy / dist) * speed;
                 }
             }
-            this.applySeparation(entities);
-            this.applyWallAvoidance();
             return;
         }
 
@@ -997,7 +870,9 @@ class CombatUnit extends Entity {
                 let dx = damagedAlly.x - this.x;
                 let dy = damagedAlly.y - this.y;
                 if (minDistToDamaged > this.range) {
-                    this.smartMove(damagedAlly.x, damagedAlly.y, speed);
+                    this.angle = Math.atan2(dy, dx);
+                    this.x += (dx / minDistToDamaged) * speed;
+                    this.y += (dy / minDistToDamaged) * speed;
                 } else if (this.attackCooldown <= 0 && this.mp >= this.mpCost) {
                     this.angle = Math.atan2(dy, dx);
                     this.mp -= this.mpCost;
@@ -1007,8 +882,12 @@ class CombatUnit extends Entity {
                     this.laserDrawFrames = 8;
                 }
             } else if (closestCombatAlly) {
+                let dx = closestCombatAlly.x - this.x;
+                let dy = closestCombatAlly.y - this.y;
                 if (minDistToCombat > 100) {
-                    this.smartMove(closestCombatAlly.x, closestCombatAlly.y, speed);
+                    this.angle = Math.atan2(dy, dx);
+                    this.x += (dx / minDistToCombat) * speed;
+                    this.y += (dy / minDistToCombat) * speed;
                 }
             } else {
                 let myBase = basesArray.find(b => b.team === this.team && b.type === 'Base');
@@ -1017,38 +896,34 @@ class CombatUnit extends Entity {
                     let dy = myBase.y - this.y;
                     let dist = Math.hypot(dx, dy);
                     if (dist > 260) {
-                        this.smartMove(myBase.x, myBase.y, speed);
+                        this.angle = Math.atan2(dy, dx);
+                        this.x += (dx / dist) * speed;
+                        this.y += (dy / dist) * speed;
                     }
                 }
             }
-            this.applySeparation(entities);
-            this.applyWallAvoidance();
             return;
         }
 
-if (this.unitState !== 'MOVE_TO_POINT' && this.unitType !== 'carrier') {
-    let enemyToAttack = null;
-    let minDistToEnemy = Infinity;
-    
-    for (let ent of entities) {
-        // === SỬA LOGIC KIỂM TRA KẺ THÙ ===
-        if (isEnemy(this.team, ent.team) && !ent.markedForDeletion) {
-            let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
-            if (dist < minDistToEnemy) { 
-                minDistToEnemy = dist;
-                enemyToAttack = ent; 
+        if (this.unitState !== 'MOVE_TO_POINT' && this.unitType !== 'carrier') {
+            let enemyToAttack = null;
+            let minDistToEnemy = Infinity;
+            for (let ent of entities) {
+                if (isEnemy(this.team, ent.team) && !ent.markedForDeletion) {
+                    let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
+                    if (dist < minDistToEnemy) { minDistToEnemy = dist;
+                        enemyToAttack = ent; }
+                }
             }
-        }
-    }
-    
-    if (enemyToAttack && minDistToEnemy <= this.aggroRange) {
-        isEngaging = true;
+            if (enemyToAttack && minDistToEnemy <= this.aggroRange) {
+                isEngaging = true;
                 let dx = enemyToAttack.x - this.x;
                 let dy = enemyToAttack.y - this.y;
                 this.angle = Math.atan2(dy, dx);
                 let dist = Math.hypot(dx, dy);
                 if (dist > this.range) {
-                    this.smartMove(enemyToAttack.x, enemyToAttack.y, speed);
+                    this.x += (dx / dist) * speed;
+                    this.y += (dy / dist) * speed;
                     if (this.unitType === 'driller') this.heatLevel = 0;
                 } else if (this.attackCooldown <= 0 && (this.mpCost === 0 || this.mp >= this.mpCost)) {
                     if (this.mpCost > 0) this.mp -= this.mpCost;
@@ -1067,7 +942,7 @@ if (this.unitState !== 'MOVE_TO_POINT' && this.unitType !== 'carrier') {
                     if (this.unitType === 'leviathan') {
                         explosions.push({ x: enemyToAttack.x, y: enemyToAttack.y, timer: GAME_CONFIG.skills.leviathan.explosionFrames });
                         for (let ent of entities) {
-                            if (ent.team !== this.team && ent !== enemyToAttack && !ent.markedForDeletion) {
+                            if (isEnemy(this.team, ent.team) && ent !== enemyToAttack && !ent.markedForDeletion) {
                                 if (Math.hypot(ent.x - enemyToAttack.x, ent.y - enemyToAttack.y) <
                                     GAME_CONFIG.skills.leviathan.splashRadius) {
                                     ent.takeDamage(finalDamage * GAME_CONFIG.skills.leviathan.splashDamageMult);
@@ -1114,14 +989,25 @@ if (this.unitState !== 'MOVE_TO_POINT' && this.unitType !== 'carrier') {
             }
 
             if (moveTarget) {
-                this.smartMove(moveTarget.x, moveTarget.y, speed);
+                let dx = moveTarget.x - this.x;
+                let dy = moveTarget.y - this.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist > this.radius + moveTarget.radius) {
+                    this.angle = Math.atan2(dy, dx);
+                    this.x += (dx / dist) * speed;
+                    this.y += (dy / dist) * speed;
+                }
             } else if (directCoord) {
-                this.smartMove(directCoord.x, directCoord.y, speed);
+                let dx = directCoord.x - this.x;
+                let dy = directCoord.y - this.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist > 0) {
+                    this.angle = Math.atan2(dy, dx);
+                    this.x += (dx / dist) * speed;
+                    this.y += (dy / dist) * speed;
+                }
             }
         }
-
-        this.applySeparation(entities);
-        this.applyWallAvoidance();
     }
 
     draw(ctx) {
@@ -1159,6 +1045,8 @@ if (this.unitState !== 'MOVE_TO_POINT' && this.unitType !== 'carrier') {
             } else if (this.unitType === 'driller') {
                 ctx.strokeStyle = `rgb(255, ${Math.max(0, 255 - this.heatLevel * 15)}, 0)`;
                 ctx.lineWidth = 2 + this.heatLevel * 0.3;
+            } else if (this.unitType === 'leviathan') {
+                ctx.strokeStyle = "rgba(0,0,0,0)";
             } else {
                 ctx.strokeStyle = this.color;
                 ctx.lineWidth = 1.5;
@@ -1309,26 +1197,15 @@ function runHostLogic() {
 
 function resolveCollisions(entities) {
     let len = entities.length;
-    let processed = new Set();
-    
     for (let i = 0; i < len; i++) {
         let e1 = entities[i];
         if (e1.markedForDeletion || e1.isDrone) continue;
-        if (processed.has(e1)) continue;
-        
+
         for (let j = i + 1; j < len; j++) {
             let e2 = entities[j];
             if (e2.markedForDeletion || e2.isDrone) continue;
-            
-            let minDist = e1.radius + e2.radius + 10;
-            
-            if (e1 instanceof Miner && e2 instanceof Miner) {
-                minDist = e1.radius + e2.radius + 25;
-            }
-            if (e1 instanceof CombatUnit && e2 instanceof CombatUnit && !e1.isDrone && !e2.isDrone) {
-                minDist = e1.radius + e2.radius + 20;
-            }
-            
+
+            let minDist = e1.radius + e2.radius + 15;
             let dx = e2.x - e1.x;
             if (dx > minDist || dx < -minDist) continue;
             let dy = e2.y - e1.y;
@@ -1339,67 +1216,18 @@ function resolveCollisions(entities) {
                 let overlap = minDist - dist;
                 let nx = dx / dist;
                 let ny = dy / dist;
-                
-                let m1 = 1, m2 = 1;
-                if (e1 instanceof Building || e1 instanceof GoldMine || e1 instanceof Turret || e1 instanceof Reactor) m1 = 0;
-                if (e2 instanceof Building || e2 instanceof GoldMine || e2 instanceof Turret || e2 instanceof Reactor) m2 = 0;
-                
-                if (m1 > 0 && m2 > 0) {
-                    let pushFactor = 0.5;
-                    e1.x -= nx * overlap * pushFactor;
-                    e1.y -= ny * overlap * pushFactor;
-                    e2.x += nx * overlap * pushFactor;
-                    e2.y += ny * overlap * pushFactor;
-                } else if (m1 === 0) {
-                    e2.x += nx * overlap * 1.2;
-                    e2.y += ny * overlap * 1.2;
-                } else if (m2 === 0) {
-                    e1.x -= nx * overlap * 1.2;
-                    e1.y -= ny * overlap * 1.2;
-                }
+                let m1 = (e1 instanceof Building || e1 instanceof GoldMine || e1 instanceof Turret || e1 instanceof Reactor) ? 0 : 0.5;
+                let m2 = (e2 instanceof Building || e2 instanceof GoldMine || e2 instanceof Turret || e2 instanceof Reactor) ? 0 : 0.5;
+                if (m1 === 0 && m2 === 0) continue;
+                if (m1 === 0) m2 = 1;
+                if (m2 === 0) m1 = 1;
+                e1.x -= nx * overlap * m1 * 0.3;
+                e1.y -= ny * overlap * m1 * 0.3;
+                e2.x += nx * overlap * m2 * 0.3;
+                e2.y += ny * overlap * m2 * 0.3;
             }
         }
-        processed.add(e1);
     }
-    
-    entities.forEach(e => {
-        if (e instanceof CombatUnit || e instanceof Miner) {
-            e.x = Math.max(20, Math.min(MAP_W - 20, e.x));
-            e.y = Math.max(20, Math.min(MAP_H - 20, e.y));
-        }
-    });
-}
-
-function moveInFormation(units, targetX, targetY) {
-    let count = units.length;
-    if (count === 0) return;
-    
-    units.sort((a, b) => {
-        let distA = Math.hypot(a.x - targetX, a.y - targetY);
-        let distB = Math.hypot(b.x - targetX, b.y - targetY);
-        return distA - distB;
-    });
-    
-    let radius = 30;
-    let angleStep = (Math.PI * 2) / count;
-    let currentAngle = -Math.PI / 2;
-    
-    units.forEach((u, index) => {
-        if (index === 0) {
-            u.unitState = 'MOVE_TO_POINT';
-            u.targetX = targetX;
-            u.targetY = targetY;
-            u.hasHoldPosition = false;
-        } else {
-            let offset = Math.floor(index / 8) + 1;
-            let angle = currentAngle + (index * 0.8);
-            let r = radius * offset;
-            u.unitState = 'MOVE_TO_POINT';
-            u.targetX = targetX + Math.cos(angle) * r;
-            u.targetY = targetY + Math.sin(angle) * r;
-            u.hasHoldPosition = false;
-        }
-    });
 }
 
 function sendSyncData() {
@@ -1485,7 +1313,6 @@ function sendSyncData() {
 
 function checkGameOverStatus(m, s) {
     if (gameMode === 'team') {
-        // TEAM mode: Kiểm tra player team vs bot team
         let playerBase = getBase('player');
         let botBases = TEAM_BOT.filter(t => getBase(t)).length;
         
@@ -1511,7 +1338,6 @@ function checkGameOverStatus(m, s) {
         return;
     }
     
-    // FFA mode (giữ nguyên)
     let pBase = getBase('player');
     let botBases = buildings.filter(b => b.team !== 'player' && b.type === 'Base').length;
     if (!pBase && !gameOver) {
@@ -1614,35 +1440,23 @@ function getArmyPower(unitList, queued = []) {
 function getThreatNearBase(team, radius = GAME_CONFIG.ai.evaluation.ownBaseThreatRadius) {
     let base = getBase(team);
     if (!base) return 0;
-    return units.filter(u => u.team !== team && !u.isDrone && !u.markedForDeletion &&
+    return units.filter(u => isEnemy(team, u.team) && !u.isDrone && !u.markedForDeletion &&
         Math.hypot(u.x - base.x, u.y - base.y) <= radius).length;
 }
 
 function chooseAITarget(team, bData, base, style) {
     let evalCfg = GAME_CONFIG.ai.evaluation;
-    
-    // Nếu đã có mục tiêu và vẫn còn sống, giữ nguyên
-    if (bData.targetTeam && getBase(bData.targetTeam)) {
-        // Kiểm tra mục tiêu có còn là kẻ thù không
-        if (isEnemy(team, bData.targetTeam)) {
-            if (Math.random() > GAME_CONFIG.ai.targetSwitchChance) {
-                return bData.targetTeam;
-            }
+    if (bData.targetTeam && getBase(bData.targetTeam) && isEnemy(team, bData.targetTeam)) {
+        if (Math.random() > GAME_CONFIG.ai.targetSwitchChance) {
+            return bData.targetTeam;
         }
     }
     
-    // Lấy danh sách kẻ thù dựa trên game mode
     let candidates = getEnemyTeams(team).filter(t => getBase(t));
     
-    // Nếu không có kẻ thù, trả về null
     if (candidates.length === 0) {
-        // Trong TEAM mode, nếu không còn kẻ thù nào, bot sẽ đứng yên
-        if (gameMode === 'team') {
-            return null;
-        }
-        // FFA: nếu không có kẻ thù, lấy tất cả các team khác
-        candidates = ALL_TEAMS.filter(t => t !== team && getBase(t));
-        if (candidates.length === 0) return null;
+        bData.targetTeam = null;
+        return null;
     }
     
     let bestTeam = candidates[0];
@@ -1656,26 +1470,19 @@ function chooseAITarget(team, bData, base, style) {
         let enemyTurrets = turrets.filter(t => t.team === enemyTeam).length;
         let enemyArmy = getTeamCombatUnits(enemyTeam).length;
         let hpRatio = enemyBase.hp / enemyBase.maxHp;
-        let pressureOnUs = units.filter(u => 
-            isEnemy(u.team, team) && 
-            Math.hypot(u.x - base.x, u.y - base.y) < evalCfg.pressureRadius
-        ).length;
-        
+        let pressureOnUs = units.filter(u => isEnemy(team, u.team) &&
+            Math.hypot(u.x - base.x, u.y - base.y) < evalCfg.pressureRadius).length;
         let score = 0;
         score += (1 - hpRatio) * evalCfg.weakBaseWeight;
         score += Math.max(0, evalCfg.closeTargetRange - distance) / evalCfg.closeTargetDivisor;
-        score -= enemyTurrets * (style === GAME_CONFIG.ai.styles.RUSH ? evalCfg.turretPenaltyRush : evalCfg.turretPenaltyDefault);
+        score -= enemyTurrets * (style === GAME_CONFIG.ai.styles.RUSH ? evalCfg.turretPenaltyRush :
+            evalCfg.turretPenaltyDefault);
         score -= enemyArmy * evalCfg.enemyArmyPenalty;
         score += pressureOnUs * evalCfg.pressureWeight;
-        
         if (enemyTeam === 'player') score += evalCfg.playerBias;
-        
-        if (score > bestScore) { 
-            bestScore = score; 
-            bestTeam = enemyTeam; 
-        }
+        if (score > bestScore) { bestScore = score;
+            bestTeam = enemyTeam; }
     });
-    
     return bestTeam;
 }
 
@@ -1703,19 +1510,10 @@ function rallyArmy(team, point, combatUnits) {
 }
 
 function orderArmyAttack(team, targetTeam, combatUnits) {
-    // Kiểm tra targetTeam có phải là kẻ thù không
+    // KIỂM TRA: Chỉ tấn công nếu là kẻ thù
     if (!isEnemy(team, targetTeam)) {
-        // Nếu không phải kẻ thù, không tấn công
         return;
     }
-    
-    combatUnits.forEach(u => {
-        u.unitState = 'ATTACKING';
-        u.targetTeam = targetTeam;
-        u.hasHoldPosition = false;
-    });
-}
-    // ============================
     
     combatUnits.forEach(u => {
         u.unitState = 'ATTACKING';
@@ -1786,13 +1584,10 @@ function updateAllAI() {
         if (!bData) return;
 
         // === KIỂM TRA TEAM MODE ===
-        // Nếu không còn kẻ thù nào, dừng AI
         let enemies = getEnemyTeams(team).filter(t => getBase(t));
         if (enemies.length === 0 && gameMode === 'team') {
-            // Trong TEAM mode, nếu không còn kẻ thù, bot dừng tấn công
             bData.aiState = 'GATHER';
             bData.targetTeam = null;
-            // Cho quân về nhà
             let aiCombatUnits = getTeamCombatUnits(team);
             aiCombatUnits.forEach(u => {
                 u.unitState = 'IDLE';
@@ -1820,7 +1615,14 @@ function updateAllAI() {
 
         let strat = bData.aiStrategy;
         let styleCfg = GAME_CONFIG.ai.styles[strat] || GAME_CONFIG.ai.styles.FLEX;
-        bData.targetTeam = chooseAITarget(team, bData, base, styleCfg);
+        
+        // CHỈ CHỌN MỤC TIÊU NẾU CÓ KẺ THÙ
+        if (enemies.length > 0) {
+            bData.targetTeam = chooseAITarget(team, bData, base, styleCfg);
+        } else {
+            bData.targetTeam = null;
+        }
+        
         let targetBase = bData.targetTeam ? getBase(bData.targetTeam) : null;
 
         if (bData.aiState === 'GATHER') {
@@ -1831,25 +1633,18 @@ function updateAllAI() {
             if (targetBase && (aiCombatUnitsCount >= styleCfg.attackThreshold ||
                     armyPower >= styleCfg.minAttackPower || getThreatNearBase(team) >= 3)) {
                 bData.aiState = 'ATTACK';
-                // CHỈ TẤN CÔNG NẾU LÀ KẺ THÙ
-                if (isEnemy(team, bData.targetTeam)) {
-                    orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
-                }
+                orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
             }
         } else if (bData.aiState === 'ATTACK') {
-            if (aiCombatUnitsCount <= styleCfg.retreatAt || !targetBase) {
+            if (aiCombatUnitsCount <= styleCfg.retreatAt || !targetBase || !isEnemy(team, bData.targetTeam)) {
                 bData.aiState = 'GATHER';
+                bData.targetTeam = null;
             } else {
-                // CHỈ TẤN CÔNG NẾU LÀ KẺ THÙ
-                if (isEnemy(team, bData.targetTeam)) {
-                    orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
-                } else {
-                    bData.aiState = 'GATHER';
-                }
+                orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
             }
         }
 
-        // Phần còn lại giữ nguyên...
+        // Phần còn lại giữ nguyên
         if (bData.gold > GAME_CONFIG.economy.techUpgradeCost + 50 && Math.random() < GAME_CONFIG.ai.upgradeChance) {
             bData.gold -= GAME_CONFIG.economy.techUpgradeCost;
             let targets = ['interceptor', 'corvette', 'repairer', 'railgun', 'spc'];
@@ -1985,11 +1780,6 @@ function initGame() {
         animationId = null;
     }
 
-    // Lưu gameMode từ server nếu có
-    if (isOnline && typeof serverGameMode !== 'undefined') {
-        gameMode = serverGameMode;
-    }
-
     let strats = ['RUSH', 'LATE', 'FLEX'];
     let tList = ['std', 'sea', 'under'];
 
@@ -2018,9 +1808,7 @@ function initGame() {
             aiState: 'GATHER',
             aiStrategy: strats[Math.floor(Math.random() * 3)],
             targetTeam: null,
-            rallyPoint: null,
-            // Thêm flag cho TEAM mode
-            isAlly: false
+            rallyPoint: null
         };
     });
 
@@ -2249,20 +2037,9 @@ function updateUI() {
     }
 
     if (document.getElementById('upgrade-modal').style.display === 'flex') renderTechStats();
-//-------
-    // Thêm hiển thị chế độ game
-    let modeElement = document.getElementById('game-mode-display');
-    if (!modeElement) {
-        // Tạo element nếu chưa có
-        let scoreboard = document.getElementById('scoreboard');
-        if (scoreboard) {
-            modeElement = document.createElement('div');
-            modeElement.id = 'game-mode-display';
-            modeElement.style.cssText = 'position: absolute; top: 30px; right: 10px; color: #ffcc00; font-size: 10px; font-weight: bold; background: rgba(0,0,0,0.7); padding: 3px 8px; border-radius: 4px; border: 1px solid #ffcc00; z-index: 15;';
-            scoreboard.appendChild(modeElement);
-        }
-    }
     
+    // Hiển thị chế độ game
+    let modeElement = document.getElementById('game-mode-display');
     if (modeElement) {
         if (gameMode === 'team') {
             modeElement.textContent = '🤝 TEAM MODE: Player vs Bot';
@@ -2274,7 +2051,6 @@ function updateUI() {
             modeElement.style.color = '#ff4444';
         }
     }
-//-------
 }
 
 // --- GAME LOOP ---
