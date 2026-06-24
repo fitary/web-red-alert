@@ -1441,6 +1441,7 @@ function getArmyPower(unitList, queued = []) {
 function getThreatNearBase(team, radius = GAME_CONFIG.ai.evaluation.ownBaseThreatRadius) {
     let base = getBase(team);
     if (!base) return 0;
+    // SỬA: dùng isEnemy thay vì so sánh team
     return units.filter(u => isEnemy(team, u.team) && !u.isDrone && !u.markedForDeletion &&
         Math.hypot(u.x - base.x, u.y - base.y) <= radius).length;
 }
@@ -1771,6 +1772,10 @@ function applyHpUpgrade(team, upgKey) {
 
 // --- INIT GAME ---
 function initGame() {
+	    // Giữ gameMode nếu đã được set (cho offline hoặc online)
+    if (typeof gameMode === 'undefined' || gameMode === null) {
+        gameMode = 'ffa'; // fallback
+    }
     if (animationId) {
         cancelAnimationFrame(animationId);
         animationId = null;

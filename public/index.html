@@ -340,7 +340,8 @@ function joinRoom() {
 function playOffline() {
     document.getElementById('mp-lobby').style.display = 'none';
     isOnline = false;
-    gameMode = 'team'; // Đặt mặc định là TEAM khi offline
+    // === THÊM DÒNG NÀY ===
+    gameMode = 'team'; // Mặc định TEAM khi offline
     // Cập nhật hiển thị trên scoreboard
     const modeDisplay = document.getElementById('game-mode-display');
     if (modeDisplay) {
@@ -348,7 +349,6 @@ function playOffline() {
         modeDisplay.style.borderColor = '#ffcc00';
         modeDisplay.style.color = '#ffcc00';
     }
-    // Nếu muốn bắt đầu game luôn, có thể gọi startGame() nhưng thường thì người chơi sẽ bấm nút "XUẤT KÍCH" sau
 }
 
 if (socket) {
