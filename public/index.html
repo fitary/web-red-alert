@@ -340,9 +340,9 @@ function joinRoom() {
 function playOffline() {
     document.getElementById('mp-lobby').style.display = 'none';
     isOnline = false;
-    // === THÊM DÒNG NÀY ===
-    gameMode = 'team'; // Mặc định TEAM khi offline
-    // Cập nhật hiển thị trên scoreboard
+    // BẮT BUỘC ĐẶT CHẾ ĐỘ TEAM KHI CHƠI OFFLINE (nếu bạn muốn)
+    gameMode = 'team';
+    // Cập nhật hiển thị
     const modeDisplay = document.getElementById('game-mode-display');
     if (modeDisplay) {
         modeDisplay.textContent = '🤝 TEAM MODE: Player vs Bot (Offline)';

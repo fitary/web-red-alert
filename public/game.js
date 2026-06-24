@@ -430,13 +430,13 @@ class Building extends Entity {
             let dmg = GAME_CONFIG.buildings.hq.atk;
             let target = null;
             let minDist = Infinity;
-            for (let ent of entities) {
-                if (isEnemy(this.team, ent.team) && !ent.markedForDeletion) {
-                    let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
-                    if (dist < minDist) { minDist = dist;
-                        target = ent; }
-                }
-            }
+for (let ent of entities) {
+    if (isEnemy(this.team, ent.team) && !ent.markedForDeletion) {
+        let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
+        if (dist < minDist) { minDist = dist;
+            target = ent; }
+    }
+}
             if (target && minDist <= this.range && this.attackCooldown <= 0) {
                 target.takeDamage(dmg);
                 this.attackCooldown = GAME_CONFIG.buildings.hq.cd;
@@ -578,13 +578,13 @@ class Turret extends Entity {
 
         let target = null;
         let minDist = Infinity;
-        for (let ent of entities) {
-            if (isEnemy(this.team, ent.team) && !ent.markedForDeletion) {
-                let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
-                if (dist < minDist) { minDist = dist;
-                    target = ent; }
-            }
-        }
+for (let ent of entities) {
+    if (isEnemy(this.team, ent.team) && !ent.markedForDeletion) {
+        let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
+        if (dist < minDist) { minDist = dist;
+            target = ent; }
+    }
+}
         if (target && minDist <= this.range) {
             let dx = target.x - this.x;
             let dy = target.y - this.y;
@@ -902,13 +902,13 @@ class CombatUnit extends Entity {
         if (this.unitState !== 'MOVE_TO_POINT' && this.unitType !== 'carrier') {
             let enemyToAttack = null;
             let minDistToEnemy = Infinity;
-            for (let ent of entities) {
-                if (isEnemy(this.team, ent.team) && !ent.markedForDeletion) {
-                    let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
-                    if (dist < minDistToEnemy) { minDistToEnemy = dist;
-                        enemyToAttack = ent; }
-                }
-            }
+for (let ent of entities) {
+    if (isEnemy(this.team, ent.team) && !ent.markedForDeletion) {
+        let dist = Math.hypot(ent.x - this.x, ent.y - this.y);
+        if (dist < minDistToEnemy) { minDistToEnemy = dist;
+            enemyToAttack = ent; }
+    }
+}
             if (enemyToAttack && minDistToEnemy <= this.aggroRange) {
                 isEngaging = true;
                 let dx = enemyToAttack.x - this.x;
@@ -1441,7 +1441,6 @@ function getArmyPower(unitList, queued = []) {
 function getThreatNearBase(team, radius = GAME_CONFIG.ai.evaluation.ownBaseThreatRadius) {
     let base = getBase(team);
     if (!base) return 0;
-    // SỬA: dùng isEnemy thay vì so sánh team
     return units.filter(u => isEnemy(team, u.team) && !u.isDrone && !u.markedForDeletion &&
         Math.hypot(u.x - base.x, u.y - base.y) <= radius).length;
 }
@@ -1455,6 +1454,7 @@ function chooseAITarget(team, bData, base, style) {
         }
     }
     
+    // Lấy danh sách kẻ thù theo chế độ (FFA hoặc TEAM)
     let enemies = getEnemyTeams(team).filter(t => getBase(t));
     if (enemies.length === 0) {
         bData.targetTeam = null;
@@ -1623,23 +1623,26 @@ function updateAllAI() {
         let targetBase = bData.targetTeam ? getBase(bData.targetTeam) : null;
 
         if (bData.aiState === 'GATHER') {
-            if (targetBase) {
-                bData.rallyPoint = getRallyPoint(base, targetBase);
-                rallyArmy(team, bData.rallyPoint, aiCombatUnits);
-            }
-            if (targetBase && (aiCombatUnitsCount >= styleCfg.attackThreshold ||
-                    armyPower >= styleCfg.minAttackPower || getThreatNearBase(team) >= 3)) {
-                bData.aiState = 'ATTACK';
-                orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
-            }
-        } else if (bData.aiState === 'ATTACK') {
-            if (aiCombatUnitsCount <= styleCfg.retreatAt || !targetBase || !isEnemy(team, bData.targetTeam)) {
-                bData.aiState = 'GATHER';
-                bData.targetTeam = null;
-            } else {
-                orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
-            }
+    if (targetBase) {
+        bData.rallyPoint = getRallyPoint(base, targetBase);
+        rallyArmy(team, bData.rallyPoint, aiCombatUnits);
+    }
+    if (targetBase && (aiCombatUnitsCount >= styleCfg.attackThreshold ||
+            armyPower >= styleCfg.minAttackPower || getThreatNearBase(team) >= 3)) {
+        bData.aiState = 'ATTACK';
+        // CHỈ TẤN CÔNG NẾU LÀ KẺ THÙ
+        if (isEnemy(team, bData.targetTeam)) {
+            orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
         }
+    }
+} else if (bData.aiState === 'ATTACK') {
+    if (aiCombatUnitsCount <= styleCfg.retreatAt || !targetBase || !isEnemy(team, bData.targetTeam)) {
+        bData.aiState = 'GATHER';
+        bData.targetTeam = null;
+    } else {
+        orderArmyAttack(team, bData.targetTeam, aiCombatUnits);
+    }
+}
 
         // Phần còn lại của AI (kinh tế, xây dựng) giữ nguyên
         if (bData.gold > GAME_CONFIG.economy.techUpgradeCost + 50 && Math.random() < GAME_CONFIG.ai.upgradeChance) {
