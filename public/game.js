@@ -104,6 +104,16 @@ const GAME_CONFIG = {
             FLEX: { attackThreshold: 7, minAttackPower: 260, retreatAt: 2, miners: 6, turrets: 3, reactors: 3, upgradeBarracksAtArmy: 5, saveForUpgradeAtArmy: 4, unitMix: ['interceptor', 'corvette', 'repairer', 'railgun'], maxQueue: 3 },
             LATE: { attackThreshold: 10, minAttackPower: 420, retreatAt: 3, miners: 7, turrets: 5, reactors: 3, upgradeBarracksAtArmy: 3, saveForUpgradeAtArmy: 3, unitMix: ['corvette', 'repairer', 'railgun', 'railgun'], maxQueue: 4 }
         }
+    },
+    movement: {
+        separationRadius: 30,
+        alignmentRadius: 60,
+        cohesionRadius: 80,
+        maxForce: 0.05,
+        maxSpeed: 1.2,
+        avoidWallDistance: 50,
+        formationSpacing: 25,
+        swarmUpdateInterval: 5
     }
 };
 
@@ -595,7 +605,7 @@ class Turret extends Entity {
     }
 }
 
-// --- CLASS MINER ---
+// --- CLASS MINER (ĐÃ SỬA LỖI DI CHUYỂN) ---
 class Miner extends Entity {
     constructor(x, y, team) {
         super(x, y, team, 'miner', GAME_CONFIG.buildings.miner.hp);
@@ -606,32 +616,86 @@ class Miner extends Entity {
         this.mineTimer = 0;
         this.targetMine = null;
         this.angle = -Math.PI / 2;
+        this.separationRadius = 25;
+        this.avoidForce = { x: 0, y: 0 };
+        this.stuckTimer = 0;
+        this.lastPosition = { x: this.x, y: this.y };
+        this.wanderAngle = Math.random() * Math.PI * 2;
+        this.smoothX = this.x;
+        this.smoothY = this.y;
     }
 
     update(minesArray, basesArray) {
         let spdLv = gameData[this.team] ? gameData[this.team].upg['miner'].spdLv : 0;
         let speed = getEffectiveStat(GAME_CONFIG.buildings.miner.spd, spdLv, this.team, 'miner_spd');
+        
+        this.avoidForce = { x: 0, y: 0 };
+        
+        // Áp dụng lực tách biệt với miners khác
+        miners.forEach(other => {
+            if (other === this || other.markedForDeletion) return;
+            if (other.team === this.team) {
+                let dx = this.x - other.x;
+                let dy = this.y - other.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist > 0 && dist < this.separationRadius * 2) {
+                    let strength = (this.separationRadius * 2 - dist) / (this.separationRadius * 2);
+                    this.avoidForce.x += (dx / dist) * strength * 0.6;
+                    this.avoidForce.y += (dy / dist) * strength * 0.6;
+                }
+            }
+        });
+
+        // Kiểm tra bị kẹt
+        let distMoved = Math.hypot(this.x - this.lastPosition.x, this.y - this.lastPosition.y);
+        if (distMoved < 0.3) {
+            this.stuckTimer++;
+            if (this.stuckTimer > 40) {
+                this.wanderAngle += (Math.random() - 0.5) * 2;
+                this.x += Math.cos(this.wanderAngle) * 3;
+                this.y += Math.sin(this.wanderAngle) * 3;
+                this.stuckTimer = 0;
+                if (this.state === 'moving_to_mine' || this.state === 'mining') {
+                    this.targetMine = null;
+                    this.state = 'moving_to_mine';
+                }
+            }
+        } else {
+            this.stuckTimer = 0;
+        }
+        this.lastPosition = { x: this.x, y: this.y };
 
         if (this.state === 'moving_to_mine' || this.state === 'mining') {
             if (!this.targetMine || this.targetMine.markedForDeletion) {
                 let closestMine = null;
                 let minDist = Infinity;
                 minesArray.forEach(m => {
-                    let d = Math.hypot(m.x - this.x, m.y - this.y);
-                    if (d < minDist) { minDist = d;
-                        closestMine = m; }
+                    if (!m.markedForDeletion) {
+                        let d = Math.hypot(m.x - this.x, m.y - this.y);
+                        if (d < minDist) { minDist = d;
+                            closestMine = m; }
+                    }
                 });
                 this.targetMine = closestMine;
-                if (!this.targetMine) { this.state = 'returning'; return; }
+                if (!this.targetMine) { 
+                    this.state = 'returning'; 
+                    return; 
+                }
             }
-            let dx = this.targetMine.x - this.x;
-            let dy = this.targetMine.y - this.y;
+
+            let dx = this.targetMine.x - this.x + this.avoidForce.x * 8;
+            let dy = this.targetMine.y - this.y + this.avoidForce.y * 8;
             let dist = Math.hypot(dx, dy);
-            if (dist > this.radius + this.targetMine.radius + 20) {
+            
+            if (dist > this.radius + this.targetMine.radius + 15) {
                 this.state = 'moving_to_mine';
-                this.angle = Math.atan2(dy, dx);
-                this.x += (dx / dist) * speed;
-                this.y += (dy / dist) * speed;
+                if (dist > 0) {
+                    this.angle = Math.atan2(dy, dx);
+                    let moveSpeed = Math.min(speed * 0.8, dist * 0.12);
+                    let noise = 1 + (Math.random() - 0.5) * 0.1;
+                    this.x += (dx / dist) * moveSpeed * noise;
+                    this.y += (dy / dist) * moveSpeed * noise;
+                }
             } else {
                 this.state = 'mining';
                 this.mineTimer++;
@@ -640,20 +704,25 @@ class Miner extends Entity {
                     if (gathered > 0) {
                         this.carryAmount += gathered;
                         this.mineTimer = 0;
-                        if (this.carryAmount >= this.maxCarry) this.state = 'returning';
+                        if (this.carryAmount >= this.maxCarry) {
+                            this.state = 'returning';
+                            this.targetMine = null;
+                        }
                     }
                 }
             }
         } else if (this.state === 'returning') {
             let myBase = basesArray.find(b => b.team === this.team && b.type === 'Base');
             if (myBase) {
-                let dx = myBase.x - this.x;
-                let dy = myBase.y - this.y;
+                let dx = myBase.x - this.x + this.avoidForce.x * 8;
+                let dy = myBase.y - this.y + this.avoidForce.y * 8;
                 let dist = Math.hypot(dx, dy);
-                if (dist > this.radius + myBase.radius + 25) {
+                
+                if (dist > this.radius + myBase.radius + 20) {
                     this.angle = Math.atan2(dy, dx);
-                    this.x += (dx / dist) * speed;
-                    this.y += (dy / dist) * speed;
+                    let moveSpeed = Math.min(speed * 0.8, dist * 0.12);
+                    this.x += (dx / dist) * moveSpeed;
+                    this.y += (dy / dist) * moveSpeed;
                 } else {
                     if (gameData[this.team]) gameData[this.team].gold += this.carryAmount;
                     this.carryAmount = 0;
@@ -662,33 +731,13 @@ class Miner extends Entity {
                 }
             }
         }
-    }
-
-    draw(ctx) {
-        let imgKey = gameData[this.team] ? gameData[this.team].theme + '_miner' : 'std_miner';
-        let img = assets[imgKey];
-        let drawSize = this.radius * 3.5;
-        if (img && img.complete && img.naturalWidth > 0) {
-            ctx.save();
-            ctx.translate(this.x, this.y);
-            ctx.rotate(this.angle + Math.PI / 2);
-            ctx.drawImage(img, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
-            ctx.restore();
-        } else {
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-            ctx.fillStyle = "#222";
-            ctx.fill();
-            ctx.strokeStyle = this.color;
-            ctx.stroke();
-            ctx.restore();
-        }
-        this.drawBarStats(ctx, this.radius + 12, 20);
+        
+        this.x = Math.max(20, Math.min(MAP_W - 20, this.x));
+        this.y = Math.max(20, Math.min(MAP_H - 20, this.y));
     }
 }
 
-// --- CLASS COMBAT UNIT ---
+// --- CLASS COMBAT UNIT (ĐÃ SỬA LỖI DI CHUYỂN) ---
 class CombatUnit extends Entity {
     constructor(x, y, team, type) {
         let s = GAME_CONFIG.units[type];
@@ -720,9 +769,95 @@ class CombatUnit extends Entity {
         this.hasHoldPosition = false;
         this.id = Math.random().toString(36).substring(2, 10);
         this.customAtk = undefined;
+        this.separationRadius = 30;
+        this.avoidForce = { x: 0, y: 0 };
+        this.stuckTimer = 0;
+        this.lastPosition = { x: this.x, y: this.y };
+        this.formationOffset = { x: 0, y: 0 };
+    }
+
+    applySeparation(entities) {
+        let forceX = 0, forceY = 0;
+        let neighbors = 0;
+        
+        entities.forEach(other => {
+            if (other === this || other.markedForDeletion) return;
+            if (other instanceof CombatUnit && other.team === this.team && !other.isDrone) {
+                let dx = this.x - other.x;
+                let dy = this.y - other.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist > 0 && dist < this.separationRadius * 2.5) {
+                    let strength = (this.separationRadius * 2.5 - dist) / (this.separationRadius * 2.5);
+                    forceX += (dx / dist) * strength * 0.5;
+                    forceY += (dy / dist) * strength * 0.5;
+                    neighbors++;
+                }
+            }
+        });
+        
+        if (neighbors > 0) {
+            this.avoidForce.x += forceX / neighbors;
+            this.avoidForce.y += forceY / neighbors;
+        }
+    }
+
+    applyWallAvoidance() {
+        let wallForce = 80;
+        let margin = 50;
+        
+        if (this.x < margin) {
+            this.avoidForce.x += wallForce * (1 - this.x / margin);
+        }
+        if (this.x > MAP_W - margin) {
+            this.avoidForce.x -= wallForce * (1 - (MAP_W - this.x) / margin);
+        }
+        if (this.y < margin) {
+            this.avoidForce.y += wallForce * (1 - this.y / margin);
+        }
+        if (this.y > MAP_H - margin) {
+            this.avoidForce.y -= wallForce * (1 - (MAP_H - this.y) / margin);
+        }
+    }
+
+    smartMove(targetX, targetY, speed) {
+        let dx = targetX - this.x + this.avoidForce.x * 4;
+        let dy = targetY - this.y + this.avoidForce.y * 4;
+        let dist = Math.hypot(dx, dy);
+        
+        if (dist > 0) {
+            let moveSpeed = Math.min(speed * 0.9, dist * 0.12);
+            
+            if (dist < 30) {
+                moveSpeed = speed * (dist / 30);
+            }
+            
+            if (dist < 5 && this.stuckTimer > 30) {
+                let angle = Math.random() * Math.PI * 2;
+                this.x += Math.cos(angle) * 3;
+                this.y += Math.sin(angle) * 3;
+                this.stuckTimer = 0;
+            }
+            
+            this.angle = Math.atan2(dy, dx);
+            this.x += (dx / dist) * Math.min(moveSpeed, dist * 0.2);
+            this.y += (dy / dist) * Math.min(moveSpeed, dist * 0.2);
+        }
+        
+        let distMoved = Math.hypot(this.x - this.lastPosition.x, this.y - this.lastPosition.y);
+        if (distMoved < 0.2) {
+            this.stuckTimer++;
+        } else {
+            this.stuckTimer = 0;
+        }
+        this.lastPosition = { x: this.x, y: this.y };
+        
+        this.x = Math.max(20, Math.min(MAP_W - 20, this.x));
+        this.y = Math.max(20, Math.min(MAP_H - 20, this.y));
     }
 
     update(entities, basesArray) {
+        this.avoidForce = { x: 0, y: 0 };
+        
         if (this.unitType === 'carrier') {
             this.drones = this.drones.filter(d => !d.markedForDeletion);
             if (this.drones.length < GAME_CONFIG.skills.carrier.maxDrones) {
@@ -788,8 +923,7 @@ class CombatUnit extends Entity {
                 this.angle = Math.atan2(dy, dx);
                 let dist = Math.hypot(dx, dy);
                 if (dist > this.range) {
-                    this.x += (dx / dist) * speed;
-                    this.y += (dy / dist) * speed;
+                    this.smartMove(targetToFix.x, targetToFix.y, speed);
                 } else if (this.attackCooldown <= 0) {
                     targetToFix.hp = Math.min(targetToFix.maxHp, targetToFix.hp + GAME_CONFIG.skills.baseRepairer.healAmount);
                     this.laserTarget = targetToFix;
@@ -801,11 +935,11 @@ class CombatUnit extends Entity {
                 let dy = myBase.y - this.y;
                 let dist = Math.hypot(dx, dy);
                 if (dist > 120) {
-                    this.angle = Math.atan2(dy, dx);
-                    this.x += (dx / dist) * speed;
-                    this.y += (dy / dist) * speed;
+                    this.smartMove(myBase.x, myBase.y, speed);
                 }
             }
+            this.applySeparation(entities);
+            this.applyWallAvoidance();
             return;
         }
 
@@ -832,9 +966,7 @@ class CombatUnit extends Entity {
                 let dx = damagedAlly.x - this.x;
                 let dy = damagedAlly.y - this.y;
                 if (minDistToDamaged > this.range) {
-                    this.angle = Math.atan2(dy, dx);
-                    this.x += (dx / minDistToDamaged) * speed;
-                    this.y += (dy / minDistToDamaged) * speed;
+                    this.smartMove(damagedAlly.x, damagedAlly.y, speed);
                 } else if (this.attackCooldown <= 0 && this.mp >= this.mpCost) {
                     this.angle = Math.atan2(dy, dx);
                     this.mp -= this.mpCost;
@@ -844,12 +976,8 @@ class CombatUnit extends Entity {
                     this.laserDrawFrames = 8;
                 }
             } else if (closestCombatAlly) {
-                let dx = closestCombatAlly.x - this.x;
-                let dy = closestCombatAlly.y - this.y;
                 if (minDistToCombat > 100) {
-                    this.angle = Math.atan2(dy, dx);
-                    this.x += (dx / minDistToCombat) * speed;
-                    this.y += (dy / minDistToCombat) * speed;
+                    this.smartMove(closestCombatAlly.x, closestCombatAlly.y, speed);
                 }
             } else {
                 let myBase = basesArray.find(b => b.team === this.team && b.type === 'Base');
@@ -858,12 +986,12 @@ class CombatUnit extends Entity {
                     let dy = myBase.y - this.y;
                     let dist = Math.hypot(dx, dy);
                     if (dist > 260) {
-                        this.angle = Math.atan2(dy, dx);
-                        this.x += (dx / dist) * speed;
-                        this.y += (dy / dist) * speed;
+                        this.smartMove(myBase.x, myBase.y, speed);
                     }
                 }
             }
+            this.applySeparation(entities);
+            this.applyWallAvoidance();
             return;
         }
 
@@ -884,8 +1012,7 @@ class CombatUnit extends Entity {
                 this.angle = Math.atan2(dy, dx);
                 let dist = Math.hypot(dx, dy);
                 if (dist > this.range) {
-                    this.x += (dx / dist) * speed;
-                    this.y += (dy / dist) * speed;
+                    this.smartMove(enemyToAttack.x, enemyToAttack.y, speed);
                     if (this.unitType === 'driller') this.heatLevel = 0;
                 } else if (this.attackCooldown <= 0 && (this.mpCost === 0 || this.mp >= this.mpCost)) {
                     if (this.mpCost > 0) this.mp -= this.mpCost;
@@ -951,25 +1078,14 @@ class CombatUnit extends Entity {
             }
 
             if (moveTarget) {
-                let dx = moveTarget.x - this.x;
-                let dy = moveTarget.y - this.y;
-                let dist = Math.hypot(dx, dy);
-                if (dist > this.radius + moveTarget.radius) {
-                    this.angle = Math.atan2(dy, dx);
-                    this.x += (dx / dist) * speed;
-                    this.y += (dy / dist) * speed;
-                }
+                this.smartMove(moveTarget.x, moveTarget.y, speed);
             } else if (directCoord) {
-                let dx = directCoord.x - this.x;
-                let dy = directCoord.y - this.y;
-                let dist = Math.hypot(dx, dy);
-                if (dist > 0) {
-                    this.angle = Math.atan2(dy, dx);
-                    this.x += (dx / dist) * speed;
-                    this.y += (dy / dist) * speed;
-                }
+                this.smartMove(directCoord.x, directCoord.y, speed);
             }
         }
+
+        this.applySeparation(entities);
+        this.applyWallAvoidance();
     }
 
     draw(ctx) {
@@ -1157,15 +1273,26 @@ function runHostLogic() {
 
 function resolveCollisions(entities) {
     let len = entities.length;
+    let processed = new Set();
+    
     for (let i = 0; i < len; i++) {
         let e1 = entities[i];
         if (e1.markedForDeletion || e1.isDrone) continue;
-
+        if (processed.has(e1)) continue;
+        
         for (let j = i + 1; j < len; j++) {
             let e2 = entities[j];
             if (e2.markedForDeletion || e2.isDrone) continue;
-
-            let minDist = e1.radius + e2.radius + 15;
+            
+            let minDist = e1.radius + e2.radius + 10;
+            
+            if (e1 instanceof Miner && e2 instanceof Miner) {
+                minDist = e1.radius + e2.radius + 25;
+            }
+            if (e1 instanceof CombatUnit && e2 instanceof CombatUnit && !e1.isDrone && !e2.isDrone) {
+                minDist = e1.radius + e2.radius + 20;
+            }
+            
             let dx = e2.x - e1.x;
             if (dx > minDist || dx < -minDist) continue;
             let dy = e2.y - e1.y;
@@ -1176,18 +1303,67 @@ function resolveCollisions(entities) {
                 let overlap = minDist - dist;
                 let nx = dx / dist;
                 let ny = dy / dist;
-                let m1 = (e1 instanceof Building || e1 instanceof GoldMine || e1 instanceof Turret || e1 instanceof Reactor) ? 0 : 0.5;
-                let m2 = (e2 instanceof Building || e2 instanceof GoldMine || e2 instanceof Turret || e2 instanceof Reactor) ? 0 : 0.5;
-                if (m1 === 0 && m2 === 0) continue;
-                if (m1 === 0) m2 = 1;
-                if (m2 === 0) m1 = 1;
-                e1.x -= nx * overlap * m1 * 0.3;
-                e1.y -= ny * overlap * m1 * 0.3;
-                e2.x += nx * overlap * m2 * 0.3;
-                e2.y += ny * overlap * m2 * 0.3;
+                
+                let m1 = 1, m2 = 1;
+                if (e1 instanceof Building || e1 instanceof GoldMine || e1 instanceof Turret || e1 instanceof Reactor) m1 = 0;
+                if (e2 instanceof Building || e2 instanceof GoldMine || e2 instanceof Turret || e2 instanceof Reactor) m2 = 0;
+                
+                if (m1 > 0 && m2 > 0) {
+                    let pushFactor = 0.5;
+                    e1.x -= nx * overlap * pushFactor;
+                    e1.y -= ny * overlap * pushFactor;
+                    e2.x += nx * overlap * pushFactor;
+                    e2.y += ny * overlap * pushFactor;
+                } else if (m1 === 0) {
+                    e2.x += nx * overlap * 1.2;
+                    e2.y += ny * overlap * 1.2;
+                } else if (m2 === 0) {
+                    e1.x -= nx * overlap * 1.2;
+                    e1.y -= ny * overlap * 1.2;
+                }
             }
         }
+        processed.add(e1);
     }
+    
+    entities.forEach(e => {
+        if (e instanceof CombatUnit || e instanceof Miner) {
+            e.x = Math.max(20, Math.min(MAP_W - 20, e.x));
+            e.y = Math.max(20, Math.min(MAP_H - 20, e.y));
+        }
+    });
+}
+
+function moveInFormation(units, targetX, targetY) {
+    let count = units.length;
+    if (count === 0) return;
+    
+    units.sort((a, b) => {
+        let distA = Math.hypot(a.x - targetX, a.y - targetY);
+        let distB = Math.hypot(b.x - targetX, b.y - targetY);
+        return distA - distB;
+    });
+    
+    let radius = 30;
+    let angleStep = (Math.PI * 2) / count;
+    let currentAngle = -Math.PI / 2;
+    
+    units.forEach((u, index) => {
+        if (index === 0) {
+            u.unitState = 'MOVE_TO_POINT';
+            u.targetX = targetX;
+            u.targetY = targetY;
+            u.hasHoldPosition = false;
+        } else {
+            let offset = Math.floor(index / 8) + 1;
+            let angle = currentAngle + (index * 0.8);
+            let r = radius * offset;
+            u.unitState = 'MOVE_TO_POINT';
+            u.targetX = targetX + Math.cos(angle) * r;
+            u.targetY = targetY + Math.sin(angle) * r;
+            u.hasHoldPosition = false;
+        }
+    });
 }
 
 function sendSyncData() {
@@ -1676,7 +1852,6 @@ function initGame() {
     let strats = ['RUSH', 'LATE', 'FLEX'];
     let tList = ['std', 'sea', 'under'];
 
-    // Khởi tạo gameData cho tất cả các phe
     ALL_TEAMS.forEach(team => {
         gameData[team] = {
             gold: GAME_CONFIG.economy.startGold,
@@ -1717,7 +1892,6 @@ function initGame() {
     frameCount = 0;
     let spawnPositions = [];
 
-    // Chỉ HOST mới tạo map
     if (!isOnline || myRole === 'host') {
         ALL_TEAMS.forEach(team => {
             gameData[team].theme = tList[Math.floor(Math.random() * tList.length)];
@@ -1770,7 +1944,6 @@ function updateUI() {
     let myData = gameData[myTeamId];
     let myBase = getBase(myTeamId);
 
-    // Cập nhật Scoreboard
     ALL_TEAMS.forEach(team => {
         let element = document.getElementById(`gold-${team}`);
         if (!element) return;
@@ -1813,7 +1986,6 @@ function updateUI() {
 
     if (!myData) return;
 
-    // Cập nhật UI
     document.getElementById('reactor-count').innerText =
         `${reactors.filter(t => t.team === myTeamId).length}/${GAME_CONFIG.economy.playerReactorLimit} | +${GAME_CONFIG.economy.reactorGoldPerTick}v/s`;
 
@@ -1953,7 +2125,6 @@ function gameLoop() {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    // XỬ LÝ LOGIC
     if (!isOnline || myRole === 'host') {
         runHostLogic();
         checkGameOverStatus(m, s);
@@ -1972,16 +2143,13 @@ function gameLoop() {
         }
     }
 
-    // VẼ
     mines.forEach(mine => mine.draw(ctx));
     reactors.forEach(r => r.draw(ctx));
     miners.forEach(miner => miner.draw(ctx));
     turrets.forEach(turret => turret.draw(ctx));
     units.forEach(unit => unit.draw(ctx));
     buildings.forEach(building => building.draw(ctx));
-
     explosions.forEach(ex => drawExplosion(ctx, ex));
-
     drawSelectedUnits(ctx);
 
     if (isDragging && placementMode === 'select') {
@@ -1993,7 +2161,6 @@ function gameLoop() {
     }
 
     ctx.restore();
-
     animationId = requestAnimationFrame(gameLoop);
 }
 
@@ -2127,14 +2294,22 @@ function processAction(team, action, p = {}) {
             u.hasHoldPosition = false;
         });
     } else if (action === 'move_group') {
-        units.forEach(u => {
-            if (u.team === team && p.unitIds && p.unitIds.includes(u.id)) {
-                u.unitState = 'MOVE_TO_POINT';
-                u.targetX = p.x;
-                u.targetY = p.y;
-                u.hasHoldPosition = false;
-            }
-        });
+        let selectedUnits = units.filter(u => 
+            u.team === team && 
+            !u.isDrone && 
+            p.unitIds && 
+            p.unitIds.includes(u.id)
+        );
+        
+        if (selectedUnits.length > 1) {
+            moveInFormation(selectedUnits, p.x, p.y);
+        } else if (selectedUnits.length === 1) {
+            let u = selectedUnits[0];
+            u.unitState = 'MOVE_TO_POINT';
+            u.targetX = p.x;
+            u.targetY = p.y;
+            u.hasHoldPosition = false;
+        }
     } else if (action === 'upg_turret') {
         let cLv = tData.inGameTurretLv || 0;
         if (tData.gold >= GAME_CONFIG.economy.turretCost && cLv < 5) {
@@ -2233,6 +2408,133 @@ function playerToggleTurretPlacement() {
     }
 }
 
+// --- TECH UPGRADE MODAL ---
+function openUpgradeModal() {
+    document.getElementById('upgrade-modal').style.display = 'flex';
+    renderTechStats();
+}
+
+function closeUpgradeModal() {
+    document.getElementById('upgrade-modal').style.display = 'none';
+}
+
+function renderTechStats() {
+    currentUpgTarget = document.getElementById('upg-target').value;
+    let uData = gameData[myTeamId].upg[currentUpgTarget];
+    let actualTarget = currentUpgTarget === 'spc' ? getSpecialShipHelper(gameData[myTeamId].theme).type : currentUpgTarget;
+    
+    let baseHp = 0, baseAtk = 0, baseSpd = 0;
+    if(currentUpgTarget === 'hq') baseHp = GAME_CONFIG.buildings.hq.hp;
+    else { baseHp = GAME_CONFIG.units[actualTarget].hp; baseAtk = GAME_CONFIG.units[actualTarget].atk; baseSpd = GAME_CONFIG.units[actualTarget].spd; }
+    
+    let metaHpKey = currentUpgTarget === 'spc' ? 'dreadnought_hp' : actualTarget+'_hp';
+    let metaAtkKey = currentUpgTarget === 'spc' ? 'dreadnought_atk' : actualTarget+'_atk';
+    let metaSpdKey = currentUpgTarget === 'spc' ? 'dreadnought_spd' : actualTarget+'_spd';
+
+    document.getElementById('row-atk').style.display = currentUpgTarget === 'hq' ? 'none' : 'flex';
+    document.getElementById('row-spd').style.display = currentUpgTarget === 'hq' ? 'none' : 'flex';
+    document.getElementById('btn-up-atk').style.display = currentUpgTarget === 'hq' ? 'none' : 'block';
+    document.getElementById('btn-up-spd').style.display = currentUpgTarget === 'hq' ? 'none' : 'block';
+    
+    document.getElementById('stat-hp').innerText = `${baseHp} -> ${Math.floor(getEffectiveStat(baseHp, uData.hpLv, myTeamId, metaHpKey))} (Lv${uData.hpLv})`;
+    if(currentUpgTarget !== 'hq') {
+        document.getElementById('stat-atk').innerText = `${baseAtk} -> ${Math.floor(getEffectiveStat(baseAtk, uData.atkLv, myTeamId, metaAtkKey))} (Lv${uData.atkLv})`;
+        document.getElementById('stat-spd').innerText = `${baseSpd.toFixed(1)} -> ${getEffectiveStat(baseSpd, uData.spdLv, myTeamId, metaSpdKey).toFixed(2)} (Lv${uData.spdLv})`;
+    }
+    let btnDisabled = gameData[myTeamId].gold < GAME_CONFIG.economy.techUpgradeCost;
+    document.getElementById('btn-up-atk').disabled = btnDisabled;
+    document.getElementById('btn-up-hp').disabled = btnDisabled;
+    document.getElementById('btn-up-spd').disabled = btnDisabled;
+}
+
+function buyUpgrade(statType) {
+    executeAction('tech_upg', {target: currentUpgTarget, stat: statType});
+    closeUpgradeModal();
+}
+
+function updateLiveButtonStats() {
+    let pUpg = gameData[myTeamId].upg;
+    let u;
+    u = 'interceptor';
+    document.getElementById('lbl-int').innerHTML = `HP:${Math.floor(getEffectiveStat(GAME_CONFIG.units[u].hp, pUpg[u].hpLv, myTeamId, u+'_hp'))} | ATK:${Math.floor(getEffectiveStat(GAME_CONFIG.units[u].atk, pUpg[u].atkLv, myTeamId, u+'_atk'))}<br>⏱ 10s`;
+    u = 'corvette';
+    document.getElementById('lbl-cor').innerHTML = `HP:${Math.floor(getEffectiveStat(GAME_CONFIG.units[u].hp, pUpg[u].hpLv, myTeamId, u+'_hp'))} | ATK:${Math.floor(getEffectiveStat(GAME_CONFIG.units[u].atk, pUpg[u].atkLv, myTeamId, u+'_atk'))}<br>⏱ 15s`;
+    u = 'repairer';
+    document.getElementById('lbl-rep').innerHTML = `HP:${Math.floor(getEffectiveStat(GAME_CONFIG.units[u].hp, pUpg[u].hpLv, myTeamId, u+'_hp'))} | HỒI:${Math.floor(getEffectiveStat(GAME_CONFIG.units[u].atk, pUpg[u].atkLv, myTeamId, u+'_atk'))}<br>⏱ 20s`;
+    u = 'railgun';
+    document.getElementById('lbl-rai').innerHTML = `HP:${Math.floor(getEffectiveStat(GAME_CONFIG.units[u].hp, pUpg[u].hpLv, myTeamId, u+'_hp'))} | ATK:${Math.floor(getEffectiveStat(GAME_CONFIG.units[u].atk, pUpg[u].atkLv, myTeamId, u+'_atk'))}<br>⏱ 25s`;
+    
+    let spc = getSpecialShipHelper(gameData[myTeamId].theme).type;
+    document.getElementById('lbl-spc').innerHTML = `HP:${Math.floor(getEffectiveStat(GAME_CONFIG.units[spc].hp, pUpg['spc'].hpLv, myTeamId, 'dreadnought_hp'))} | ATK:${Math.floor(getEffectiveStat(GAME_CONFIG.units[spc].atk, pUpg['spc'].atkLv, myTeamId, 'dreadnought_atk'))}<br>⏱ 60s`;
+}
+
+// --- COMMAND ROOM UI ---
+function switchCRTab(tabId, btn) {
+    document.querySelectorAll('#command-room .cr-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('#command-room .cr-tabs button').forEach(el => el.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    btn.classList.add('active');
+}
+
+function buyMetaUpgrade(key, cost) {
+    if(profile.darkMatter >= cost) {
+        profile.darkMatter -= cost;
+        profile.upgrades[key] = (profile.upgrades[key] || 0) + 1;
+        saveProfile();
+        renderCommandRoom();
+    }
+}
+
+function renderCommandRoom() {
+    document.getElementById('cr-sector').innerText = profile.sector;
+    document.getElementById('cr-dm').innerText = profile.darkMatter;
+    let html = '';
+    GAME_CONFIG.permanentUpgrades.forEach(u => {
+        let currentLv = profile.upgrades[u.key] || 0;
+        let cost = u.baseCost * (currentLv + 1);
+        let btnState = profile.darkMatter < cost ? 'disabled style="background:transparent; color:#555; border-color:#333;"' : 'style="border-color:#cc33ff; color:#cc33ff;"';
+        html += `<div class="cr-upg-item"><div><b>${u.name}</b><span>Cấp: ${currentLv} (+${currentLv*5}%)</span></div><button class="btn" onclick="buyMetaUpgrade('${u.key}', ${cost})" ${btnState}>${cost} Lõi</button></div>`;
+    });
+    document.getElementById('cr-upgrades').innerHTML = html;
+    renderGallery();
+}
+
+function renderGallery() {
+    let html = '<div class="gallery-grid">';
+    const generalProfiles = {
+        bot1: { name: 'TITAN', desc: 'Thiên về đội hình trâu máu và ép giao tranh trực diện.' },
+        bot2: { name: 'SWIFT', desc: 'Ưa tốc độ, mở rộng nhanh và đánh sớm.' },
+        bot3: { name: 'PSIONIC', desc: 'Tận dụng nâng cấp để kéo dài giao tranh.' },
+        bot4: { name: 'NOVA', desc: 'Dồn tài nguyên cho đợt công kích lớn.' },
+        bot5: { name: 'ABYSS', desc: 'Phòng thủ sâu, phản công khi đủ hạm đội.' },
+        bot6: { name: 'GALAXY', desc: 'Chiến thuật linh hoạt, đổi mục tiêu liên tục.' },
+        bot7: { name: 'NEBULA', desc: 'Thích kéo trận về cuối và dùng tàu cấp cao.' }
+    };
+    Object.entries(generalProfiles).forEach(([team, data]) => {
+        let unlocked = profile.capturedGenerals.includes(team);
+        html += `<div class="gallery-item ${unlocked ? 'unlocked' : ''}"><b>${unlocked ? data.name : '???'}</b><span>${unlocked ? data.desc : 'Phá hủy HQ thế lực này để mở khóa hồ sơ.'}</span></div>`;
+    });
+    html += '</div>';
+    document.getElementById('cr-gallery').innerHTML = html;
+}
+
+function resetProfile() {
+    if(confirm("Xóa toàn bộ dữ liệu Tinh Hệ và Nâng Cấp Vĩnh Viễn?")) {
+        localStorage.removeItem('galacticRTS_profile');
+        location.reload();
+    }
+}
+
+// --- SWITCH TAB ---
+function switchTab(tabId, btnElement) {
+    document.querySelectorAll('#ui-container .tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('#ui-container .tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    btnElement.classList.add('active');
+    placementMode = null;
+    if(gameStarted) updateUI();
+}
+
 // --- START GAME ---
 function startGame() {
     if (gameStarted) return;
@@ -2278,6 +2580,118 @@ imgBoom.onload = () => markAssetLoaded(true);
 imgBoom.onerror = () => markAssetLoaded(false);
 imgBoom.src = baseUrl + 'boom.png';
 
+// --- CANVAS SETUP ---
+canvas = document.getElementById('gameCanvas');
+ctx = canvas.getContext('2d');
+
+canvas.addEventListener('mousedown', e => {
+    isDragging = true;
+    panStart = {x: e.clientX, y: e.clientY};
+    selectStart = {x: e.clientX, y: e.clientY};
+    selectEnd = {x: e.clientX, y: e.clientY};
+    dragDist = 0;
+});
+
+window.addEventListener('mousemove', e => {
+    if(!isDragging) return;
+    selectEnd = {x: e.clientX, y: e.clientY};
+    let dx = e.clientX - panStart.x;
+    let dy = e.clientY - panStart.y;
+    dragDist += Math.abs(dx) + Math.abs(dy);
+    if (placementMode !== 'select') {
+        cam.x -= dx / zoom;
+        cam.y -= dy / zoom;
+        panStart = {x: e.clientX, y: e.clientY};
+        clampCamera();
+    }
+});
+
+window.addEventListener('mouseup', e => {
+    if(isDragging) {
+        if (placementMode === 'select') {
+            if (dragDist > 15) {
+                let wStartX = selectStart.x / zoom + cam.x;
+                let wStartY = selectStart.y / zoom + cam.y;
+                let wEndX = selectEnd.x / zoom + cam.x;
+                let wEndY = selectEnd.y / zoom + cam.y;
+                let minX = Math.min(wStartX, wEndX);
+                let maxX = Math.max(wStartX, wEndX);
+                let minY = Math.min(wStartY, wEndY);
+                let maxY = Math.max(wStartY, wEndY);
+                selectedUnitIds = [];
+                units.forEach(u => {
+                    if (u.team === myTeamId && !u.isDrone && u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY)
+                        selectedUnitIds.push(u.id);
+                });
+                if(selectedUnitIds.length > 0) showToast(`Đã gom ${selectedUnitIds.length} hạm đội!`, "#00ffff");
+            }
+            placementMode = null;
+            updateUI();
+        } else if (dragDist <= 15) {
+            handleMapClick(e.clientX, e.clientY);
+        }
+    }
+    isDragging = false;
+});
+
+canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    isDragging = true;
+    panStart = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+    selectStart = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+    selectEnd = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+    dragDist = 0;
+}, { passive: false });
+
+window.addEventListener('touchmove', e => {
+    if(!isDragging) return;
+    e.preventDefault();
+    selectEnd = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+    let dx = e.touches[0].clientX - panStart.x;
+    let dy = e.touches[0].clientY - panStart.y;
+    dragDist += Math.abs(dx) + Math.abs(dy);
+    if (placementMode !== 'select') {
+        cam.x -= dx / zoom;
+        cam.y -= dy / zoom;
+        panStart = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+        clampCamera();
+    }
+}, { passive: false });
+
+window.addEventListener('touchend', e => {
+    if(isDragging) {
+        if (placementMode === 'select') {
+            if (dragDist > 15) {
+                let wStartX = selectStart.x / zoom + cam.x;
+                let wStartY = selectStart.y / zoom + cam.y;
+                let wEndX = selectEnd.x / zoom + cam.x;
+                let wEndY = selectEnd.y / zoom + cam.y;
+                let minX = Math.min(wStartX, wEndX);
+                let maxX = Math.max(wStartX, wEndX);
+                let minY = Math.min(wStartY, wEndY);
+                let maxY = Math.max(wStartY, wEndY);
+                selectedUnitIds = [];
+                units.forEach(u => {
+                    if (u.team === myTeamId && !u.isDrone && u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY)
+                        selectedUnitIds.push(u.id);
+                });
+                if(selectedUnitIds.length > 0) showToast(`Đã gom ${selectedUnitIds.length} hạm đội!`, "#00ffff");
+            }
+            placementMode = null;
+            updateUI();
+        } else if (dragDist <= 15 && e.changedTouches.length > 0) {
+            handleMapClick(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+        }
+    }
+    isDragging = false;
+}, { passive: false });
+
+window.addEventListener('resize', () => { updateZoom(); clampCamera(); });
+updateZoom();
+
+// --- KHỞI TẠO COMMAND ROOM ---
+renderCommandRoom();
+
 // --- EXPORT ---
 window.startGame = startGame;
 window.hostRoom = hostRoom;
@@ -2307,4 +2721,3 @@ window.renderTechStats = renderTechStats;
 window.switchCRTab = switchCRTab;
 window.buyMetaUpgrade = buyMetaUpgrade;
 window.resetProfile = resetProfile;
-window.copyInviteLink = copyInviteLink;
