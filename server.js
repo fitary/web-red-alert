@@ -4,7 +4,11 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, { 
+    cors: { origin: "*" },
+    pingTimeout: 60000,
+    pingInterval: 25000
+});
 
 app.use(express.static('public'));
 const rooms = {};
@@ -18,32 +22,46 @@ io.on('connection', (socket) => {
         rooms[roomCode] = { 
             host: socket.id, 
             status: 'waiting',
-            players: [{ id: socket.id, team: 'player', name: username || 'Host' }] // Host mặc định phe 'player'
+            players: [{ id: socket.id, team: 'player', name: username || 'Host' }]
         };
         socket.join(roomCode);
-        socket.emit('init', { role: 'host', team: 'player', roomCode: roomCode, players: rooms[roomCode].players });
+        socket.emit('init', { 
+            role: 'host', 
+            team: 'player', 
+            roomCode: roomCode, 
+            players: rooms[roomCode].players 
+        });
+        console.log(`🏠 Phòng ${roomCode} được tạo bởi ${username || 'Host'}`);
     });
 
     // 2. Tham gia phòng
     socket.on('joinRoom', (data) => {
         let room = rooms[data.code];
         
-        // ĐÃ SỬA: Cho phép tối đa 8 người tham gia (1 Host + 7 Guest)
         if (room && room.status === 'waiting' && room.players.length < 8) {
-            // Cấp phe cho Guest: bot1, bot2, bot3... bot7
             const teamId = `bot${room.players.length}`; 
-            const newPlayer = { id: socket.id, team: teamId, name: data.username || `Guest ${room.players.length}` };
+            const newPlayer = { 
+                id: socket.id, 
+                team: teamId, 
+                name: data.username || `Guest ${room.players.length}` 
+            };
             
             room.players.push(newPlayer);
             socket.join(data.code);
             
-            socket.emit('init', { role: 'guest', team: teamId, roomCode: data.code, players: room.players });
+            socket.emit('init', { 
+                role: 'guest', 
+                team: teamId, 
+                roomCode: data.code, 
+                players: room.players 
+            });
+            
             io.to(data.code).emit('roomUpdated', room.players);
             io.to(data.code).emit('systemMsg', `⚡ ${newPlayer.name} đã tham gia!`);
+            console.log(`👤 ${newPlayer.name} tham gia phòng ${data.code}`);
         } 
-        // ĐÃ THÊM: Báo lỗi cụ thể khi phòng đã full 8 người
         else if (room && room.players.length >= 8) {
-            socket.emit('systemMsg', '❌ Phòng đã đầy (Tối đa 8 người)! Bạn không thể tham gia.');
+            socket.emit('systemMsg', '❌ Phòng đã đầy (Tối đa 8 người)!');
         } 
         else {
             socket.emit('systemMsg', '❌ Mã phòng sai hoặc trận đấu đã bắt đầu!');
@@ -55,21 +73,18 @@ io.on('connection', (socket) => {
         let room = rooms[roomCode];
         if(room && room.host === socket.id) {
             room.status = 'playing';
-            // Báo cho mọi người trong phòng biết game bắt đầu, kèm danh sách phe do người thật điều khiển
-            io.to(roomCode).emit('gameStarted', room.players.map(p => p.team)); 
+            const humanTeams = room.players.map(p => p.team);
+            io.to(roomCode).emit('gameStarted', humanTeams);
+            console.log(`🎮 Trận đấu bắt đầu tại phòng ${roomCode}`);
         }
     });
 
-    // ==========================================
-    // KÊNH ĐỒNG BỘ GAMEPLAY (HOST <-> GUEST)
-    // ==========================================
-    
-    // Host gửi tọa độ lính, nhà, máu... xuống cho các Guest
+    // 4. Host gửi tọa độ lính, nhà, máu... xuống cho các Guest
     socket.on('syncGameState', (data) => {
         socket.to(data.roomCode).emit('updateGameState', data.state);
     });
 
-    // Guest gửi lệnh (Mua lính, xây nhà, điều quân) lên cho Host xử lý
+    // 5. Guest gửi lệnh lên cho Host xử lý
     socket.on('playerAction', (data) => {
         let room = rooms[data.roomCode];
         if(room && room.host) {
@@ -77,9 +92,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ==========================================
-
-    // Xử lý khi có người tắt web
+    // 6. Xử lý khi có người tắt web
     socket.on('disconnect', () => {
         console.log('❌ Ngắt kết nối:', socket.id);
         for (let roomCode in rooms) {
@@ -87,17 +100,23 @@ io.on('connection', (socket) => {
             let playerIndex = room.players.findIndex(p => p.id === socket.id);
             
             if (playerIndex !== -1) {
+                const playerName = room.players[playerIndex].name;
+                
                 if (room.host === socket.id) {
-                    // Nếu Host thoát -> Sập phòng
                     io.to(roomCode).emit('systemMsg', '❌ Host đã mất kết nối! Phòng bị hủy.');
                     io.to(roomCode).emit('hostDisconnected');
                     delete rooms[roomCode];
+                    console.log(`💥 Phòng ${roomCode} bị hủy do Host thoát`);
                 } else {
-                    // Nếu Guest thoát -> Báo cho những người còn lại
-                    let playerName = room.players[playerIndex].name;
                     room.players.splice(playerIndex, 1);
-                    io.to(roomCode).emit('roomUpdated', room.players);
-                    io.to(roomCode).emit('systemMsg', `⚠️ ${playerName} đã rời phòng!`);
+                    
+                    if (room.players.length === 0) {
+                        delete rooms[roomCode];
+                        console.log(`🗑️ Phòng ${roomCode} bị xóa do không còn ai`);
+                    } else {
+                        io.to(roomCode).emit('roomUpdated', room.players);
+                        io.to(roomCode).emit('systemMsg', `⚠️ ${playerName} đã rời phòng!`);
+                    }
                 }
                 break;
             }
@@ -106,4 +125,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server v0.1.5 đang chạy tại port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server v0.2.0 đang chạy tại port ${PORT}`));

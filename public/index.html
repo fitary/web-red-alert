@@ -255,18 +255,19 @@
 let matchStartTime = 0;
         let explosions = [];
 
-        // ======== THÊM CỤM BIẾN MẠNG NÀY VÀO ========
-        const socket = typeof io !== 'undefined' ? io() : null;
-        let isOnline = false;     // Đánh dấu game đang chơi chế độ Online
-        let myRole = 'host';      // Mặc định là 'host' (Nếu chơi offline thì coi như host)
-        let myRoomCode = '';      // Mã phòng hiện tại
-        let myTeamId = 'player';  // Phe của bản thân trên máy này
-        let humanTeams = [];      // Danh sách các phe có người thật điều khiển (để chặn AI phe đó)
-        let serverGameState = null; // Dữ liệu Guest nhận từ Host để vẽ
-		let lobbyPlayers = []; // Lưu tên người thật
-        let globalBotBuff = 0; // Lưu sức mạnh Bot
-        let guestCameraSet = false; // Cờ kiểm tra cam		
-        // ============================================
+// ======== BIẾN MẠNG ========
+const socket = typeof io !== 'undefined' ? io() : null;
+let isOnline = false;
+let myRole = 'host';
+let myRoomCode = '';
+let myTeamId = 'player';
+let humanTeams = [];
+let serverGameState = null;
+let lobbyPlayers = [];
+let globalBotBuff = 0;
+let guestCameraSet = false;
+// ===========================
+
 // KIỂM TRA LINK CÓ CHỨA MÃ PHÒNG KHÔNG KHI VỪA VÀO WEB
         window.addEventListener('DOMContentLoaded', (event) => {
             let params = new URLSearchParams(window.location.search);
@@ -278,44 +279,39 @@ let matchStartTime = 0;
             }
         });
 // HÀM SAO CHÉP LINK MỜI
-        function copyInviteLink() {
-            // Lấy URL hiện tại (Bỏ đi các tham số cũ nếu có) và nối mã phòng vào
-            let base_url = window.location.origin + window.location.pathname;
-            let inviteLink = base_url + '?code=' + myRoomCode;
-            
-            navigator.clipboard.writeText(inviteLink).then(() => {
-                showToast("Đã copy link mời. Gửi cho bạn bè ngay!", "#00ff00");
-            }).catch(err => {
-                // Backup nếu trình duyệt chặn Clipboard API
-                prompt("Hãy copy link dưới đây:", inviteLink);
-            });
-        }
+function copyInviteLink() {
+    let base_url = window.location.origin + window.location.pathname;
+    let inviteLink = base_url + '?code=' + myRoomCode;
+    
+    navigator.clipboard.writeText(inviteLink).then(() => {
+        showToast("Đã copy link mời. Gửi cho bạn bè ngay!", "#00ff00");
+    }).catch(err => {
+        prompt("Hãy copy link dưới đây:", inviteLink);
+    });
+}
 // ======== LOGIC LOBBY & SOCKET LẮNG NGHE ========
 function hostRoom() {
-            console.log("👉 Đã kích hoạt lệnh bấm nút Tạo Phòng");
-            if (!socket || !socket.connected) {
-                showToast("Máy chủ Render đang khởi động hoặc chưa kết nối xong! Vui lòng đợi vài giây.", "#ff4444");
-                console.warn("⚠️ Socket chưa sẵn sàng hoặc socket.connected = false");
-                return;
-            }
-            let name = document.getElementById('playerName').value.trim() || 'Host';
-            socket.emit('createRoom', name);
-        }
+    if (!socket || !socket.connected) {
+        showToast("Máy chủ đang khởi động! Vui lòng đợi vài giây.", "#ff4444");
+        return;
+    }
+    let name = document.getElementById('playerName').value.trim() || 'Host';
+    socket.emit('createRoom', name);
+}
 
-        function joinRoom() {
-            console.log("👉 Đã kích hoạt lệnh bấm nút Tham Gia");
-            if (!socket || !socket.connected) {
-                showToast("Chưa kết nối được máy chủ!", "#ff4444");
-                return;
-            }
-            let code = document.getElementById('roomCodeInput').value.trim().toUpperCase();
-            let name = document.getElementById('playerName').value.trim() || 'Guest';
-            if (code.length === 6) {
-                socket.emit('joinRoom', { code: code, username: name });
-            } else {
-                showToast("Mã phòng phải có đúng 6 ký tự!", "#ff4444");
-            }
-        }
+function joinRoom() {
+    if (!socket || !socket.connected) {
+        showToast("Chưa kết nối được máy chủ!", "#ff4444");
+        return;
+    }
+    let code = document.getElementById('roomCodeInput').value.trim().toUpperCase();
+    let name = document.getElementById('playerName').value.trim() || 'Guest';
+    if (code.length === 6) {
+        socket.emit('joinRoom', { code: code, username: name });
+    } else {
+        showToast("Mã phòng phải có đúng 6 ký tự!", "#ff4444");
+    }
+}
 
         function playOffline() {
             document.getElementById('mp-lobby').style.display = 'none';
@@ -323,73 +319,66 @@ function hostRoom() {
         }
 
 if (socket) {
-            // Theo dõi trạng thái kết nối trực tiếp trên màn hình Console
-            socket.on('connect', () => {
-                console.log('✅ Kết nối thành công tới Server Render! ID:', socket.id);
-                showToast("Kết nối Máy chủ thành công!", "#00ff00");
-            });
+    socket.on('connect', () => {
+        console.log('✅ Kết nối thành công!');
+        showToast("Kết nối Máy chủ thành công!", "#00ff00");
+    });
 
-            socket.on('connect_error', (err) => {
-                console.error('❌ Lỗi kết nối Server Render:', err.message);
-            });
+    socket.on('connect_error', (err) => {
+        console.error('❌ Lỗi kết nối:', err.message);
+    });
 
-            // Sự kiện khởi tạo khi Tạo/Vào phòng thành công
-socket.on('init', (data) => {
-                console.log('📦 Nhận dữ liệu khởi tạo tự máy chủ:', data);
-                isOnline = true;
-                myRole = data.role;
-                myTeamId = data.team;
-                myRoomCode = data.roomCode;
-                lobbyPlayers = data.players; // Lưu danh sách tên
-                
-                document.getElementById('lobby-menu').style.display = 'none';
-                document.getElementById('lobby-room').style.display = 'block';
-                document.getElementById('lbl-roomCode').innerText = myRoomCode;
-                
-                if (myRole === 'host') {
-                    document.getElementById('btn-start-mp').style.display = 'block';
-                    document.getElementById('host-settings').style.display = 'block'; // Mở menu cho Host
-                } else {
-                    document.getElementById('wait-msg').style.display = 'block';
-                }
-                
-                updatePlayerList(data.players);
-            });
-
-            // Lắng nghe dữ liệu đồng bộ map liên tục (Chỉ máy Guest xử lý)
-            socket.on('updateGameState', (state) => {
-                if (myRole === 'guest') serverGameState = state;
-            });
-
-            // Cập nhật danh sách thành viên trong phòng chờ khi có người vào/ra
-			socket.on('roomUpdated', (players) => {
-                lobbyPlayers = players; // Liên tục cập nhật tên người mới vào
-                updatePlayerList(players);
-            });
-
-            // Nhận thông điệp hệ thống
-            socket.on('systemMsg', (msg) => {
-                showToast(msg, "#ffd700");
-            });
-
-            // Lệnh kích hoạt trận đấu từ máy chủ khi Host nhấn nút Start
-            socket.on('gameStarted', (humanPlayerTeams) => {
-                console.log('🎮 Trận đấu bắt đầu! Danh sách người thật:', humanPlayerTeams);
-                humanTeams = humanPlayerTeams;
-                document.getElementById('mp-lobby').style.display = 'none';
-                document.getElementById('command-room').style.display = 'none';
-                startGame();
-            });
-
-            // Xử lý giải tán phòng khi Host rớt mạng
-            socket.on('hostDisconnected', () => {
-                alert("Host đã ngắt kết nối hoặc hủy phòng!");
-                location.reload();
-            });
-            socket.on('executeAction', (data) => {
-                if (myRole === 'host') processAction(data.team, data.action, data.payload);
-            });
+    socket.on('init', (data) => {
+        console.log('📦 Nhận dữ liệu khởi tạo:', data);
+        isOnline = true;
+        myRole = data.role;
+        myTeamId = data.team;
+        myRoomCode = data.roomCode;
+        lobbyPlayers = data.players;
+        
+        document.getElementById('lobby-menu').style.display = 'none';
+        document.getElementById('lobby-room').style.display = 'block';
+        document.getElementById('lbl-roomCode').innerText = myRoomCode;
+        
+        if (myRole === 'host') {
+            document.getElementById('btn-start-mp').style.display = 'block';
+            document.getElementById('host-settings').style.display = 'block';
+        } else {
+            document.getElementById('wait-msg').style.display = 'block';
         }
+        
+        updatePlayerList(data.players);
+    });
+
+    socket.on('roomUpdated', (players) => {
+        updatePlayerList(players);
+    });
+
+    socket.on('systemMsg', (msg) => {
+        showToast(msg, "#ffd700");
+    });
+
+    socket.on('gameStarted', (humanPlayerTeams) => {
+        console.log('🎮 Trận đấu bắt đầu!');
+        humanTeams = humanPlayerTeams;
+        document.getElementById('mp-lobby').style.display = 'none';
+        document.getElementById('command-room').style.display = 'none';
+        startGame();
+    });
+
+    socket.on('hostDisconnected', () => {
+        alert("Host đã ngắt kết nối!");
+        location.reload();
+    });
+
+    socket.on('updateGameState', (state) => {
+        if (myRole === 'guest') serverGameState = state;
+    });
+
+    socket.on('executeAction', (data) => {
+        if (myRole === 'host') processAction(data.team, data.action, data.payload);
+    });
+}
 //------
 function processAction(team, action, p = {}) {
             let tData = gameData[team]; let base = getBase(team); if (!tData) return;
@@ -459,21 +448,21 @@ function processAction(team, action, p = {}) {
         }
 //------
 function updatePlayerList(players) {
-            let html = '';
-            players.forEach(p => {
-                let roleTag = p.team === 'player' ? '<span style="color:#00ffff">[HOST]</span>' : '<span style="color:#aaa">[GUEST]</span>';
-                html += `<div style="padding: 4px 0; border-bottom: 1px dashed #222;">${roleTag} ${p.name} <span style="font-size:9px; color:#666;">(Phe: ${p.team})</span></div>`;
-            });
-            document.getElementById('player-list').innerHTML = html;
+    lobbyPlayers = players;
+    let html = '';
+    players.forEach(p => {
+        let roleTag = p.team === 'player' ? '<span style="color:#00ffff">[HOST]</span>' : '<span style="color:#aaa">[GUEST]</span>';
+        html += `<div style="padding: 4px 0; border-bottom: 1px dashed #222;">${roleTag} ${p.name} <span style="font-size:9px; color:#666;">(Phe: ${p.team})</span></div>`;
+    });
+    document.getElementById('player-list').innerHTML = html;
 
-            // Cập nhật bộ đếm hiển thị
-            let countLbl = document.getElementById('player-count-lbl');
-            if (countLbl) {
-                countLbl.innerText = `SỐ LƯỢNG: ${players.length}/8`;
-                if (players.length >= 8) countLbl.style.color = '#ff4444'; // Báo đỏ khi đầy phòng
-                else countLbl.style.color = '#ffcc00';
-            }
-        }
+    let countLbl = document.getElementById('player-count-lbl');
+    if (countLbl) {
+        countLbl.innerText = `SỐ LƯỢNG: ${players.length}/8`;
+        if (players.length >= 8) countLbl.style.color = '#ff4444';
+        else countLbl.style.color = '#ffcc00';
+    }
+}
 
 function startMultiplayer() {
             if(myRole === 'host') {
